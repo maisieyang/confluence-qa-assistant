@@ -111,8 +111,7 @@ export function tracePrompt(
   console.debug(JSON.stringify(payload));
 }
 
-export const QA_USER_PROMPT_INSTRUCTIONS = `### Task Overview
-- Follow the system-level guidelines above.
-- Use the retrieval context when it is relevant and cite sources inline (e.g., [1]).
-- If no meaningful context exists, explicitly mention this before answering from general knowledge.
-- If you cite nothing, do **not** add a References section.`;
+export const QA_USER_PROMPT_INSTRUCTIONS = `### Task Instructions
+- Answer strictly based on the retrieval context below. Cite every factual claim with [n].
+- If the context is insufficient, tell the user what is missing rather than guessing.
+- Do NOT add a References section — cite inline only.`;

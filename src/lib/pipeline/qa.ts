@@ -84,7 +84,7 @@ function buildContext(results: SearchResult[]): { context: string; references: A
   };
 }
 
-const FALLBACK_INSTRUCTIONS = `${QA_USER_PROMPT_INSTRUCTIONS}\n- Retrieval context was empty; inform the user before answering from general knowledge.`;
+const FALLBACK_INSTRUCTIONS = `${QA_USER_PROMPT_INSTRUCTIONS}\n- No relevant documents were found. Tell the user clearly: "I could not find relevant information in the current documents." Do NOT answer from general knowledge.`;
 
 export class QAEngine {
   constructor(
@@ -179,7 +179,7 @@ export class QAEngine {
       const { messages } = buildProviderMessages({
         question,
         chatHistory,
-        instructions: `${QA_USER_PROMPT_INSTRUCTIONS}\n- This is a general conversation, not a knowledge base query. Respond naturally without citing references.`,
+        instructions: `- This is a general conversation (greeting, thanks, or off-topic). Respond naturally and briefly without citing any references.`,
         contextSections: [],
       });
 
@@ -277,7 +277,7 @@ export class QAEngine {
 
     const { context, references } = buildContext(relevantResults);
     const instructions = fallbackApplied
-      ? `${QA_USER_PROMPT_INSTRUCTIONS}\n- Retrieved context scored below the usual similarity threshold; treat it as suggestive, not definitive.`
+      ? `${QA_USER_PROMPT_INSTRUCTIONS}\n- The retrieved context has low confidence. Use it cautiously, and warn the user: "The following information may not be directly relevant — please verify."`
       : QA_USER_PROMPT_INSTRUCTIONS;
 
     const { messages } = buildProviderMessages({
