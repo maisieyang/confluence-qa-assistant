@@ -1,0 +1,38 @@
+[
+  {
+    "id": "tc-001",
+    "question": "What is Claude Code?",
+    "category": "factual",
+    "notes": "Should be answerable from Confluence docs"
+  },
+  {
+    "id": "tc-002",
+    "question": "How do I deploy a service?",
+    "category": "how-to",
+    "notes": "Tests deployment documentation retrieval"
+  },
+  {
+    "id": "tc-003",
+    "question": "What is the company's annual leave policy?",
+    "category": "factual",
+    "notes": "Likely NOT in knowledge base — should admit missing info"
+  },
+  {
+    "id": "tc-004",
+    "question": "你好",
+    "category": "general",
+    "notes": "Greeting — should be classified as general intent, no retrieval"
+  },
+  {
+    "id": "tc-005",
+    "question": "Compare project A and project B's tech stack",
+    "category": "comparison",
+    "notes": "Tests query decomposition — should split into sub-queries"
+  },
+  {
+    "id": "tc-006",
+    "question": "帮我写一首诗",
+    "category": "off-topic",
+    "notes": "Off-topic — should be classified as general intent"
+  }
+]
