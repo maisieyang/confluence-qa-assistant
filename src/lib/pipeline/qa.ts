@@ -13,6 +13,7 @@ import {
   type PromptTraceMetadata,
 } from '../prompts/unifiedPrompt';
 import { transformQuery, type QueryTransformResult, type QueryIntent } from './queryTransform';
+import { startTimer, writeObservation, type QAObservation } from './qaObservation';
 
 const DEFAULT_TEMPERATURE = 0.4;
 const DEFAULT_SIMILARITY_THRESHOLD = Number(process.env.SIMILARITY_THRESHOLD ?? '0.75');
@@ -171,12 +172,16 @@ export class QAEngine {
       throw new Error('Question must not be empty');
     }
 
+    const totalTimer = startTimer();
+
     // Step 1: Query Transform — intent classification + rewriting + decomposition
+    const transformTimer = startTimer();
     const queryTransform = await transformQuery(question, chatHistory);
+    const transformLatency = transformTimer();
 
     // Step 2: If intent is general (greeting, off-topic), skip retrieval entirely
     if (queryTransform.intent === 'general') {
-      const { messages } = buildProviderMessages({
+      const { messages, userPrompt } = buildProviderMessages({
         question,
         chatHistory,
         instructions: `- This is a general conversation (greeting, thanks, or off-topic). Respond naturally and briefly without citing any references.`,
@@ -196,14 +201,38 @@ export class QAEngine {
         results: [],
       };
 
+      // Fire-and-forget observation logging
+      const observation: QAObservation = {
+        requestId: trace?.requestId ?? 'unknown',
+        timestamp: new Date().toISOString(),
+        queryTransform: {
+          originalQuestion: question,
+          intent: 'general',
+          rewrittenQueries: [],
+          latencyMs: transformLatency,
+        },
+        retrieval: null,
+        generation: {
+          model: this.defaultProvider,
+          provider: this.defaultProvider,
+          promptCharCount: userPrompt.length,
+          referenceCount: 0,
+          scenario: 'general',
+        },
+        totalLatencyMs: totalTimer(),
+      };
+      writeObservation(observation);
+
       return { messages, references: [], retrievalTrace, queryTransform };
     }
 
     // Step 3: Retrieve using transformed queries (multi-query if decomposed)
+    const retrievalTimer = startTimer();
     const searchQueries = queryTransform.queries;
     const rawResults = searchQueries.length === 1
       ? await this.store.search(searchQueries[0], this.topK)
       : await this.multiQuerySearch(searchQueries);
+    const retrievalLatency = retrievalTimer();
 
     let relevantResults = rawResults.filter((result) => result.score >= this.similarityThreshold);
 
@@ -251,8 +280,23 @@ export class QAEngine {
       console.debug(JSON.stringify({ type: 'qa_retrieval', trace: retrievalTrace }));
     }
 
+    // Compute retrieval stats for observation
+    const scores = rawResults.map((r) => r.score);
+    const retrievalObs = {
+      queries: searchQueries,
+      rawResultCount: rawResults.length,
+      includedResultCount: relevantResults.length,
+      topScore: scores.length > 0 ? Number(Math.max(...scores).toFixed(4)) : null,
+      avgScore: scores.length > 0 ? Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(4)) : null,
+      fallbackApplied,
+      latencyMs: retrievalLatency,
+    };
+
+    let scenario: 'normal' | 'low_confidence' | 'no_context';
+
     if (relevantResults.length === 0) {
-      const { messages } = buildProviderMessages({
+      scenario = 'no_context';
+      const { messages, userPrompt } = buildProviderMessages({
         question,
         chatHistory,
         instructions: FALLBACK_INSTRUCTIONS,
@@ -265,22 +309,42 @@ export class QAEngine {
       });
 
       tracePrompt(
-        {
-          label: trace?.label ?? 'qa.prompt.fallback',
-          requestId: trace?.requestId,
-        },
+        { label: trace?.label ?? 'qa.prompt.fallback', requestId: trace?.requestId },
         messages
       );
 
+      const observation: QAObservation = {
+        requestId: trace?.requestId ?? 'unknown',
+        timestamp: new Date().toISOString(),
+        queryTransform: {
+          originalQuestion: question,
+          intent: 'knowledge_qa',
+          rewrittenQueries: searchQueries,
+          latencyMs: transformLatency,
+        },
+        retrieval: retrievalObs,
+        generation: {
+          model: this.defaultProvider,
+          provider: this.defaultProvider,
+          promptCharCount: userPrompt.length,
+          referenceCount: 0,
+          scenario,
+        },
+        totalLatencyMs: totalTimer(),
+      };
+      writeObservation(observation);
+
       return { messages, references: [], retrievalTrace, queryTransform };
     }
+
+    scenario = fallbackApplied ? 'low_confidence' : 'normal';
 
     const { context, references } = buildContext(relevantResults);
     const instructions = fallbackApplied
       ? `${QA_USER_PROMPT_INSTRUCTIONS}\n- The retrieved context has low confidence. Use it cautiously, and warn the user: "The following information may not be directly relevant — please verify."`
       : QA_USER_PROMPT_INSTRUCTIONS;
 
-    const { messages } = buildProviderMessages({
+    const { messages, userPrompt } = buildProviderMessages({
       question,
       chatHistory,
       instructions,
@@ -296,6 +360,28 @@ export class QAEngine {
       },
       messages
     );
+
+    // Fire-and-forget observation logging
+    const observation: QAObservation = {
+      requestId: trace?.requestId ?? 'unknown',
+      timestamp: new Date().toISOString(),
+      queryTransform: {
+        originalQuestion: question,
+        intent: 'knowledge_qa',
+        rewrittenQueries: searchQueries,
+        latencyMs: transformLatency,
+      },
+      retrieval: retrievalObs,
+      generation: {
+        model: this.defaultProvider,
+        provider: this.defaultProvider,
+        promptCharCount: userPrompt.length,
+        referenceCount: references.length,
+        scenario,
+      },
+      totalLatencyMs: totalTimer(),
+    };
+    writeObservation(observation);
 
     return { messages, references, retrievalTrace, queryTransform };
   }
