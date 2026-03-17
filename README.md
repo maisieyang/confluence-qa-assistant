@@ -1,4 +1,4 @@
-# Confluence QA MVP
+# Confluence QA Assistant
 
 Conversational question answering experience for Confluence documentation, built with Next.js 15, TypeScript, Pinecone, and OpenAI. The app ingests Confluence pages, vectorises them into Pinecone, and serves a streaming chat experience at `/qa` that cites source references inline.
 
