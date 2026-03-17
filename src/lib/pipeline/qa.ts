@@ -12,6 +12,7 @@ import {
   tracePrompt,
   type PromptTraceMetadata,
 } from '../prompts/unifiedPrompt';
+import { transformQuery, type QueryTransformResult, type QueryIntent } from './queryTransform';
 
 const DEFAULT_TEMPERATURE = 0.4;
 const DEFAULT_SIMILARITY_THRESHOLD = Number(process.env.SIMILARITY_THRESHOLD ?? '0.75');
@@ -28,6 +29,7 @@ export interface AnswerResponse {
   answer: string;
   references: AnswerReferences[];
   retrievalTrace?: RetrievalTrace;
+  queryTransform?: QueryTransformResult;
 }
 
 interface RetrievalTraceEntry {
@@ -45,6 +47,8 @@ export interface RetrievalTrace {
   threshold: number;
   fallbackApplied: boolean;
   fallbackThreshold?: number;
+  queries: string[];
+  intent: QueryIntent;
   results: RetrievalTraceEntry[];
 }
 
@@ -98,7 +102,7 @@ export class QAEngine {
     providerOverride?: ProviderName | string,
     trace?: PromptTraceMetadata
   ): Promise<AnswerResponse> {
-    const { messages, references, retrievalTrace } = await this.prepare(question, chatHistory, trace);
+    const { messages, references, retrievalTrace, queryTransform } = await this.prepare(question, chatHistory, trace);
     const provider = resolveProvider(providerOverride ?? this.defaultProvider);
 
     const { text } = await chatCompletion({
@@ -109,7 +113,7 @@ export class QAEngine {
 
     const answer = text || 'I do not have enough information to answer that.';
 
-    return { answer, references, retrievalTrace };
+    return { answer, references, retrievalTrace, queryTransform };
   }
 
   async createStreamingCompletion(
@@ -118,7 +122,7 @@ export class QAEngine {
     providerOverride?: ProviderName | string,
     trace?: PromptTraceMetadata
   ) {
-    const { messages, references, retrievalTrace } = await this.prepare(question, chatHistory, trace);
+    const { messages, references, retrievalTrace, queryTransform } = await this.prepare(question, chatHistory, trace);
     const provider = resolveProvider(providerOverride ?? this.defaultProvider);
 
     const { stream } = await chatCompletionStream({
@@ -131,11 +135,35 @@ export class QAEngine {
       references,
       stream,
       retrievalTrace,
+      queryTransform,
     } as {
       references: AnswerReferences[];
       stream: AsyncIterable<ChatCompletionChunk>;
       retrievalTrace: RetrievalTrace;
+      queryTransform: QueryTransformResult;
     };
+  }
+
+  /**
+   * Multi-query retrieval: run each rewritten query against the store,
+   * then merge and deduplicate results by chunk id, keeping the highest score.
+   */
+  private async multiQuerySearch(queries: string[]): Promise<SearchResult[]> {
+    const allResults = await Promise.all(
+      queries.map((query) => this.store.search(query, this.topK))
+    );
+
+    const bestByChunkId = new Map<string, SearchResult>();
+    for (const results of allResults) {
+      for (const result of results) {
+        const existing = bestByChunkId.get(result.chunk.id);
+        if (!existing || result.score > existing.score) {
+          bestByChunkId.set(result.chunk.id, result);
+        }
+      }
+    }
+
+    return Array.from(bestByChunkId.values()).sort((a, b) => b.score - a.score);
   }
 
   private async prepare(question: string, chatHistory?: string, trace?: PromptTraceMetadata) {
@@ -143,7 +171,40 @@ export class QAEngine {
       throw new Error('Question must not be empty');
     }
 
-    const rawResults = await this.store.search(question, this.topK);
+    // Step 1: Query Transform — intent classification + rewriting + decomposition
+    const queryTransform = await transformQuery(question, chatHistory);
+
+    // Step 2: If intent is general (greeting, off-topic), skip retrieval entirely
+    if (queryTransform.intent === 'general') {
+      const { messages } = buildProviderMessages({
+        question,
+        chatHistory,
+        instructions: `${QA_USER_PROMPT_INSTRUCTIONS}\n- This is a general conversation, not a knowledge base query. Respond naturally without citing references.`,
+        contextSections: [],
+      });
+
+      tracePrompt(
+        { label: trace?.label ?? 'qa.prompt.general', requestId: trace?.requestId },
+        messages,
+      );
+
+      const retrievalTrace: RetrievalTrace = {
+        threshold: this.similarityThreshold,
+        fallbackApplied: false,
+        queries: [],
+        intent: 'general',
+        results: [],
+      };
+
+      return { messages, references: [], retrievalTrace, queryTransform };
+    }
+
+    // Step 3: Retrieve using transformed queries (multi-query if decomposed)
+    const searchQueries = queryTransform.queries;
+    const rawResults = searchQueries.length === 1
+      ? await this.store.search(searchQueries[0], this.topK)
+      : await this.multiQuerySearch(searchQueries);
+
     let relevantResults = rawResults.filter((result) => result.score >= this.similarityThreshold);
 
     const fallbackThresholdValid = Number.isFinite(FALLBACK_SIMILARITY_THRESHOLD)
@@ -162,11 +223,18 @@ export class QAEngine {
       }
     }
 
+    // Cap results to topK after multi-query merge
+    if (relevantResults.length > this.topK) {
+      relevantResults = relevantResults.slice(0, this.topK);
+    }
+
     const includedIds = new Set(relevantResults.map((result) => result.chunk.id));
     const retrievalTrace: RetrievalTrace = {
       threshold: this.similarityThreshold,
       fallbackApplied,
       fallbackThreshold: fallbackApplied && fallbackThresholdValid ? FALLBACK_SIMILARITY_THRESHOLD : undefined,
+      queries: searchQueries,
+      intent: 'knowledge_qa',
       results: rawResults.map((result, idx) => ({
         index: idx + 1,
         id: result.chunk.id,
@@ -204,11 +272,7 @@ export class QAEngine {
         messages
       );
 
-      return {
-        messages,
-        references: [],
-        retrievalTrace,
-      };
+      return { messages, references: [], retrievalTrace, queryTransform };
     }
 
     const { context, references } = buildContext(relevantResults);
@@ -233,10 +297,6 @@ export class QAEngine {
       messages
     );
 
-    return {
-      messages,
-      references,
-      retrievalTrace,
-    };
+    return { messages, references, retrievalTrace, queryTransform };
   }
 }

@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
 
     const store = await getPineconeStore();
     const qa = new QAEngine(store, undefined, provider);
-    const { references, stream } = await qa.createStreamingCompletion(
+    const { references, stream, queryTransform } = await qa.createStreamingCompletion(
       latestMessage.content,
       chatHistory,
       provider,
@@ -95,7 +95,15 @@ export async function POST(req: NextRequest) {
         try {
           send(
             SSEEventType.METADATA,
-            JSON.stringify({ requestId: metrics.requestId, references, provider })
+            JSON.stringify({
+              requestId: metrics.requestId,
+              references,
+              provider,
+              queryTransform: queryTransform ? {
+                intent: queryTransform.intent,
+                queries: queryTransform.queries,
+              } : undefined,
+            })
           );
 
           let chunkIndex = 0;
