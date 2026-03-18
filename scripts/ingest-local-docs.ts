@@ -5,6 +5,8 @@ import { join, basename } from 'node:path';
 import { chunkPage, type CleanConfluencePage } from '../src/lib/confluence';
 import { getEmbeddingModelVersion } from '../src/lib/providers/modelProvider';
 import { getPineconeStore } from '../src/lib/vectorstore';
+import { buildBM25Index } from '../src/lib/search';
+import type { PageChunk } from '../src/lib/confluence/chunk';
 
 const globalWithFile = globalThis as unknown as { File?: typeof NodeFile };
 if (typeof globalWithFile.File === 'undefined') {
@@ -60,6 +62,7 @@ async function main() {
   const store = await getPineconeStore();
 
   let totalChunks = 0;
+  const allChunks: PageChunk[] = [];
 
   for (const page of pages) {
     const chunks = chunkPage(page, { embedVersion });
@@ -73,9 +76,16 @@ async function main() {
     await store.deletePageChunks(page.pageId);
     await store.upsertChunks(chunks);
 
+    allChunks.push(...chunks);
     totalChunks += chunks.length;
     console.log(`  DONE  ${page.title} — ${chunks.length} chunks`);
   }
+
+  // Build BM25 index for hybrid search
+  const bm25Index = buildBM25Index(allChunks);
+  const bm25Path = join(process.cwd(), 'data', 'bm25-index.json');
+  await fs.writeFile(bm25Path, JSON.stringify(bm25Index), 'utf-8');
+  console.log(`\n  BM25 index: ${bm25Index.docCount} docs, ${Object.keys(bm25Index.invertedIndex).length} terms → ${bm25Path}`);
 
   console.log(`\n${'='.repeat(50)}`);
   console.log(`Pages:  ${pages.length}`);

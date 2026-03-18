@@ -15,6 +15,7 @@ import {
 import { transformQuery, type QueryTransformResult, type QueryIntent } from './queryTransform';
 import { startTimer, writeObservation, type QAObservation } from './qaObservation';
 import { rerank } from './reranker';
+import { getBM25Searcher, rrfFuse } from '../search';
 
 const DEFAULT_TEMPERATURE = 0.4;
 const DEFAULT_SIMILARITY_THRESHOLD = Number(process.env.SIMILARITY_THRESHOLD ?? '0.65');
@@ -26,6 +27,8 @@ const FALLBACK_SIMILARITY_THRESHOLD = Number(process.env.QA_FALLBACK_THRESHOLD ?
 // Reranker score thresholds (0-1 scale, Jina Cross-Encoder)
 const RERANK_SCORE_THRESHOLD = Number(process.env.RERANK_SCORE_THRESHOLD ?? '0.5');
 const RERANK_FALLBACK_THRESHOLD = Number(process.env.RERANK_FALLBACK_THRESHOLD ?? '0.1');
+const BM25_ENABLED = !/^(0|false|no)$/i.test(process.env.BM25_ENABLED ?? 'true');
+const RRF_K = Number(process.env.RRF_K ?? '60');
 
 interface AnswerReferences {
   index: number;
@@ -233,13 +236,44 @@ export class QAEngine {
       return { messages, references: [], retrievalTrace, queryTransform };
     }
 
-    // Step 3: Retrieve using transformed queries — cast a wide net
+    // Step 3: Hybrid retrieval — dense (Pinecone) + sparse (BM25) in parallel, then RRF fusion
     const retrievalTimer = startTimer();
     const searchQueries = queryTransform.queries;
     const wideTopK = RERANK_ENABLED ? RETRIEVAL_TOP_K : this.topK;
-    const rawResults = searchQueries.length === 1
-      ? await this.store.search(searchQueries[0], wideTopK)
-      : await this.multiQuerySearch(searchQueries);
+
+    const densePromise = searchQueries.length === 1
+      ? this.store.search(searchQueries[0], wideTopK)
+      : this.multiQuerySearch(searchQueries);
+
+    let rawResults: SearchResult[];
+
+    if (BM25_ENABLED) {
+      const bm25Searcher = await getBM25Searcher();
+      if (bm25Searcher) {
+        const sparsePromise = (async () => {
+          const allResults = await Promise.all(
+            searchQueries.map((q) => bm25Searcher.search(q, wideTopK))
+          );
+          // Deduplicate across sub-queries
+          const best = new Map<string, SearchResult>();
+          for (const results of allResults) {
+            for (const r of results) {
+              const existing = best.get(r.chunk.id);
+              if (!existing || r.score > existing.score) best.set(r.chunk.id, r);
+            }
+          }
+          return Array.from(best.values()).sort((a, b) => b.score - a.score).slice(0, wideTopK);
+        })();
+
+        const [denseResults, sparseResults] = await Promise.all([densePromise, sparsePromise]);
+        rawResults = rrfFuse([denseResults, sparseResults], { k: RRF_K });
+      } else {
+        rawResults = await densePromise;
+      }
+    } else {
+      rawResults = await densePromise;
+    }
+
     const retrievalLatency = retrievalTimer();
 
     // Step 4: Rerank — use LLM to re-score results by semantic relevance
