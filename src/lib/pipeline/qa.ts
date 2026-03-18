@@ -14,10 +14,13 @@ import {
 } from '../prompts/unifiedPrompt';
 import { transformQuery, type QueryTransformResult, type QueryIntent } from './queryTransform';
 import { startTimer, writeObservation, type QAObservation } from './qaObservation';
+import { rerank } from './reranker';
 
 const DEFAULT_TEMPERATURE = 0.4;
 const DEFAULT_SIMILARITY_THRESHOLD = Number(process.env.SIMILARITY_THRESHOLD ?? '0.75');
 const TRACE_RETRIEVAL = /^(1|true|yes)$/i.test(process.env.QA_TRACE_RETRIEVAL ?? '');
+const RERANK_ENABLED = !/^(0|false|no)$/i.test(process.env.RERANK_ENABLED ?? 'true');
+const RETRIEVAL_TOP_K = Number(process.env.RETRIEVAL_TOP_K ?? '15'); // Wide net for reranker
 const FALLBACK_SIMILARITY_THRESHOLD = Number(process.env.QA_FALLBACK_THRESHOLD ?? '0.6');
 
 interface AnswerReferences {
@@ -226,33 +229,43 @@ export class QAEngine {
       return { messages, references: [], retrievalTrace, queryTransform };
     }
 
-    // Step 3: Retrieve using transformed queries (multi-query if decomposed)
+    // Step 3: Retrieve using transformed queries — cast a wide net
     const retrievalTimer = startTimer();
     const searchQueries = queryTransform.queries;
+    const wideTopK = RERANK_ENABLED ? RETRIEVAL_TOP_K : this.topK;
     const rawResults = searchQueries.length === 1
-      ? await this.store.search(searchQueries[0], this.topK)
+      ? await this.store.search(searchQueries[0], wideTopK)
       : await this.multiQuerySearch(searchQueries);
     const retrievalLatency = retrievalTimer();
 
-    let relevantResults = rawResults.filter((result) => result.score >= this.similarityThreshold);
+    // Step 4: Rerank — use LLM to re-score results by semantic relevance
+    let rerankLatency = 0;
+    let rerankedResults = rawResults;
+    if (RERANK_ENABLED && rawResults.length > this.topK) {
+      const rerankResult = await rerank(question, rawResults, this.topK);
+      rerankedResults = rerankResult.results;
+      rerankLatency = rerankResult.latencyMs;
+    }
+
+    let relevantResults = rerankedResults.filter((result) => result.score >= this.similarityThreshold);
 
     const fallbackThresholdValid = Number.isFinite(FALLBACK_SIMILARITY_THRESHOLD)
       && FALLBACK_SIMILARITY_THRESHOLD > 0
       && FALLBACK_SIMILARITY_THRESHOLD < 1;
 
     let fallbackApplied = false;
-    if (relevantResults.length === 0 && rawResults.length > 0 && fallbackThresholdValid) {
-      const fallbackResults = rawResults.filter((result) => result.score >= FALLBACK_SIMILARITY_THRESHOLD);
+    if (relevantResults.length === 0 && rerankedResults.length > 0 && fallbackThresholdValid) {
+      const fallbackResults = rerankedResults.filter((result) => result.score >= FALLBACK_SIMILARITY_THRESHOLD);
       if (fallbackResults.length > 0) {
         relevantResults = fallbackResults;
         fallbackApplied = true;
       } else {
-        relevantResults = [rawResults[0]];
+        relevantResults = [rerankedResults[0]];
         fallbackApplied = true;
       }
     }
 
-    // Cap results to topK after multi-query merge
+    // Cap results to topK after rerank
     if (relevantResults.length > this.topK) {
       relevantResults = relevantResults.slice(0, this.topK);
     }
@@ -289,7 +302,7 @@ export class QAEngine {
       topScore: scores.length > 0 ? Number(Math.max(...scores).toFixed(4)) : null,
       avgScore: scores.length > 0 ? Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(4)) : null,
       fallbackApplied,
-      latencyMs: retrievalLatency,
+      latencyMs: retrievalLatency + rerankLatency,
     };
 
     let scenario: 'normal' | 'low_confidence' | 'no_context';

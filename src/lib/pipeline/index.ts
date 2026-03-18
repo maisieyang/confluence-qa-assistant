@@ -4,3 +4,4 @@ export * from './loader';
 export * from './queryTransform';
 export * from './qaObservation';
 export * from './evaluate';
+export * from './reranker';

@@ -2,37 +2,81 @@
   {
     "id": "tc-001",
     "question": "What is Claude Code?",
-    "category": "factual",
-    "notes": "Should be answerable from Confluence docs"
+    "category": "factual"
   },
   {
     "id": "tc-002",
-    "question": "How do I deploy a service?",
-    "category": "how-to",
-    "notes": "Tests deployment documentation retrieval"
+    "question": "How do I deploy a service to production?",
+    "category": "how-to"
   },
   {
     "id": "tc-003",
     "question": "What is the company's annual leave policy?",
-    "category": "factual",
-    "notes": "Likely NOT in knowledge base — should admit missing info"
+    "category": "factual"
   },
   {
     "id": "tc-004",
     "question": "你好",
-    "category": "general",
-    "notes": "Greeting — should be classified as general intent, no retrieval"
+    "category": "general"
   },
   {
     "id": "tc-005",
-    "question": "Compare project A and project B's tech stack",
-    "category": "comparison",
-    "notes": "Tests query decomposition — should split into sub-queries"
+    "question": "Compare Project Alpha and Project Beta's tech stack",
+    "category": "comparison"
   },
   {
     "id": "tc-006",
     "question": "帮我写一首诗",
-    "category": "off-topic",
-    "notes": "Off-topic — should be classified as general intent"
+    "category": "off-topic"
+  },
+  {
+    "id": "tc-007",
+    "question": "How do I set up VPN on macOS?",
+    "category": "how-to"
+  },
+  {
+    "id": "tc-008",
+    "question": "新人入职需要申请哪些权限？",
+    "category": "factual"
+  },
+  {
+    "id": "tc-009",
+    "question": "What is the on-call compensation?",
+    "category": "factual"
+  },
+  {
+    "id": "tc-010",
+    "question": "Kafka consumer group rebalance怎么处理？",
+    "category": "how-to"
+  },
+  {
+    "id": "tc-011",
+    "question": "技术分享怎么报名？有什么激励？",
+    "category": "factual"
+  },
+  {
+    "id": "tc-012",
+    "question": "What are the code review requirements?",
+    "category": "factual"
+  },
+  {
+    "id": "tc-013",
+    "question": "绩效考核的评级体系是怎样的？",
+    "category": "factual"
+  },
+  {
+    "id": "tc-014",
+    "question": "How do I connect to the production database?",
+    "category": "how-to"
+  },
+  {
+    "id": "tc-015",
+    "question": "公司的 AI 平台 2026 年有什么规划？",
+    "category": "factual"
+  },
+  {
+    "id": "tc-016",
+    "question": "What is the password policy?",
+    "category": "factual"
   }
 ]

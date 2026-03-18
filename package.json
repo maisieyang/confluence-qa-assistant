@@ -10,7 +10,8 @@
     "vectorize": "tsx scripts/vectorize.ts",
     "verify-pinecone": "tsx scripts/verify-pinecone.ts",
     "clear:embeddings": "tsx scripts/clearEmbeddings.ts",
-    "evaluate": "tsx scripts/evaluate.ts"
+    "evaluate": "tsx scripts/evaluate.ts",
+    "ingest-local": "tsx scripts/ingest-local-docs.ts"
   },
   "dependencies": {
     "@ai-sdk/react": "^2.0.49",
