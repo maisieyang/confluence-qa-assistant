@@ -1,66 +1,186 @@
-# Confluence QA Assistant
+# Document QA Assistant
 
-Conversational question answering experience for Confluence documentation, built with Next.js 15, TypeScript, Pinecone, and OpenAI. The app ingests Confluence pages, vectorises them into Pinecone, and serves a streaming chat experience at `/qa` that cites source references inline.
+基于 RAG（Retrieval-Augmented Generation）的智能文档问答系统。支持 Confluence 页面和本地 Markdown 文档，通过向量检索 + BM25 混合搜索 + 重排序，提供高精度的流式问答体验。
 
-## Environment Variables
+## Architecture
 
-Create a `.env.local` (or export variables) before running any scripts or the dev server:
+```
+                          Ingestion
+                             │
+                    chunkPageParentChild()
+                       ┌─────┴─────┐
+                    Parents      Children
+                    (300-800t)   (100-200t)
+                       │            │
+              ┌────────┤            │
+              ▼        ▼            ▼
+        Parent Store  BM25       Pinecone
+          (.json)    Index      (vectors)
+              │        │            │
+              │     Query           │
+              │        │            │
+              │   ┌────┴────┐      │
+              │   ▼         ▼      │
+              │ BM25     Dense     │
+              │ search   search    │
+              │   │         │      │
+              │   │  expandToParents()
+              │   │         │      │
+              │   └────┬────┘
+              │        ▼
+              │    RRF Fusion → Rerank → LLM
+```
 
-| Key | Purpose |
-| --- | --- |
-| `OPENAI_API_KEY` | Used for both embeddings (`text-embedding-3-small`) and chat completions (`gpt-4o-mini`). |
-| `PINECONE_API_KEY` | Pinecone authentication token. |
-| `PINECONE_ENVIRONMENT` | Pinecone environment/region (e.g. `us-east-1-aws`). |
-| `PINECONE_INDEX_NAME` | Target Pinecone index for embeddings. |
-| `CONFLUENCE_MAX_PAGES` *(optional)* | Limits how many Confluence pages are fetched per ingestion run. Defaults to `5`. |
-| `CONFLUENCE_PAGE_LIMIT` *(optional)* | Page size per Confluence API request. Defaults to `25`. |
-| `CHUNK_MIN_TOKENS` *(optional)* | Minimum tokens per chunk. Defaults to `300`. |
-| `CHUNK_MAX_TOKENS` *(optional)* | Maximum tokens per chunk. Defaults to `800`. |
-| `PINECONE_NAMESPACE` *(optional)* | Namespace to write vectors into. Defaults to `default`. |
+### Parent-Child Retrieval
 
-## Vectorisation Workflow
+系统采用双层分块策略，解耦检索粒度和上下文粒度：
 
-1. **Ingest Confluence content**
-   ```bash
-   npm run vectorize
-   ```
-   - Validates required environment variables.
-   - Fetches Confluence content, cleans Markdown, chunks, embeds, and upserts vectors into Pinecone.
-   - Provides retry logic and progress logs (pages, chunks, duration).
+- **Child chunks (~100-200 tokens)**: 嵌入 Pinecone，语义密集，检索精度高
+- **Parent chunks (~300-800 tokens)**: 存储在本地 JSON，命中后扩展送入 LLM，上下文完整
+- **BM25 索引 parent 粒度**: 关键词搜索受益于更大的文本量
 
-2. **Verify Pinecone index contents**
-   ```bash
-   npm run verify-pinecone
-   ```
-   - Prints index status, vector counts per namespace, and dimension info.
-   - Executes a sample semantic query and lists retrieved chunks + metadata.
-   - Override the sample query via CLI argument or `PINECONE_SAMPLE_QUERY`.
+### Hybrid Search Pipeline
 
-3. **Run the QA experience**
-   ```bash
-   npm run dev
-   ```
-   Open [http://localhost:3000/qa](http://localhost:3000/qa) for the RAG chat interface. Responses stream in real time and each answer includes clickable references sourced from Pinecone.
+1. **Query Transform** — 意图分类 + 查询改写 + 多查询分解
+2. **Dense Search** — Pinecone 向量检索 (child level) → parent 扩展
+3. **Sparse Search** — BM25 关键词搜索 (parent level)
+4. **RRF Fusion** — Reciprocal Rank Fusion 合并两路结果
+5. **Rerank** — Jina Cross-Encoder 重排序
+6. **Generation** — LLM 流式生成带引用的回答
 
-## Available Scripts
+## Quick Start
 
-- `npm run dev`: Start the Next.js dev server with Turbopack.
-- `npm run build`: Create an optimised production build.
-- `npm run start`: Run the production server.
-- `npm run lint`: Lint all source files.
-- `npm run vectorize`: Batch ingest Confluence pages and upsert vectors to Pinecone.
-- `npm run verify-pinecone`: Inspect Pinecone index stats and run a sample query.
+### Prerequisites
 
-## Project Structure Highlights
+- Node.js 20+
+- pnpm
+- Pinecone 账号和索引
 
-- `src/lib/confluence`: Fetching, cleaning, and chunking Confluence content.
-- `src/lib/vectorstore`: Pinecone store wrapper used by ingestion and runtime retrieval.
-- `src/lib/pipeline`: Build/QA pipeline orchestrating ingestion, vectorisation, and streaming answers.
-- `src/components`: Shared UI (ChatWindow, Markdown rendering, reference lists) reused by `/` and `/qa`.
-- `scripts/`: Standalone TSX scripts for vectorisation and verification.
+### Environment Variables
 
-## Notes
+创建 `.env.local`：
 
-- Scripts use `tsx` so they can run TypeScript directly. No build step needed.
-- The QA route (`/api/qa`) streams SSE responses compatible with the shared `useChat` hook.
-- Adjust ingestion limits using the optional environment variables when experimenting locally.
+```bash
+# Required — Vector Store
+PINECONE_API_KEY=your-pinecone-api-key
+PINECONE_ENVIRONMENT=us-east-1-aws
+PINECONE_INDEX_NAME=your-index-name
+
+# Required — LLM Provider (choose one)
+OPENAI_API_KEY=your-openai-key          # OpenAI provider
+QWEN_API_KEY=your-qwen-key              # Qwen provider (default)
+
+# Optional — Reranker
+JINA_API_KEY=your-jina-key              # Jina reranker (recommended)
+
+# Optional — Retrieval tuning
+PINECONE_NAMESPACE=default
+RETRIEVAL_TOP_K=15                      # Candidates before reranking
+RERANK_ENABLED=true
+BM25_ENABLED=true
+RRF_K=60                                # RRF fusion constant
+SIMILARITY_THRESHOLD=0.65
+RERANK_SCORE_THRESHOLD=0.5
+
+# Optional — Provider model overrides
+LLM_PROVIDER=qwen                       # openai | qwen
+CHAT_MODEL=qwen-max
+EMBEDDING_MODEL=text-embedding-v4
+
+# Optional — Confluence (for live ingestion)
+CONFLUENCE_BASE_URL=https://your-domain.atlassian.net
+CONFLUENCE_TOKEN=your-token
+CONFLUENCE_SPACE_KEY=SPACE
+CONFLUENCE_MAX_PAGES=5
+CONFLUENCE_PAGE_LIMIT=25
+```
+
+### Install & Run
+
+```bash
+pnpm install
+
+# Ingest local markdown docs
+pnpm ingest-local
+
+# Start dev server
+pnpm dev
+```
+
+Open [http://localhost:3000/qa](http://localhost:3000/qa) for the chat interface.
+
+## Scripts
+
+| Script | Command | Description |
+|--------|---------|-------------|
+| `dev` | `pnpm dev` | Start Next.js dev server (Turbopack) |
+| `build` | `pnpm build` | Production build |
+| `ingest-local` | `pnpm ingest-local` | Ingest local markdown docs → Pinecone + BM25 + Parent Store |
+| `vectorize` | `pnpm vectorize` | Ingest from Confluence → Pinecone + BM25 + Parent Store |
+| `evaluate` | `pnpm evaluate` | Run RAG evaluation suite (36 test cases) |
+| `verify-pinecone` | `pnpm verify-pinecone` | Check Pinecone index stats and sample query |
+| `lint` | `pnpm lint` | Lint all source files |
+
+## Project Structure
+
+```
+src/
+├── lib/
+│   ├── confluence/          # Fetching, cleaning, chunking Confluence content
+│   │   └── chunk.ts         # chunkPage() + chunkPageParentChild() (parent-child splitting)
+│   ├── vectorstore/
+│   │   ├── pineconeStore.ts # Pinecone CRUD + vector search
+│   │   └── parentStore.ts   # Parent chunk store (JSON persistence + lazy singleton)
+│   ├── search/
+│   │   ├── bm25.ts          # BM25 index with field boosting (title/heading/content)
+│   │   ├── tokenizer.ts     # Chinese + English tokenizer with stopwords
+│   │   └── fusion.ts        # RRF (Reciprocal Rank Fusion)
+│   ├── pipeline/
+│   │   ├── qa.ts            # QAEngine: hybrid retrieval + expandToParents() + generation
+│   │   ├── build.ts         # Confluence ingestion pipeline (incremental)
+│   │   ├── queryTransform.ts # Intent detection + query rewriting
+│   │   ├── reranker.ts      # Jina cross-encoder reranking
+│   │   └── evaluate.ts      # LLM-as-judge evaluation (faithfulness, relevancy, contextPrecision)
+│   ├── providers/
+│   │   └── modelProvider.ts # Multi-provider support (OpenAI, Qwen)
+│   └── prompts/             # System/user prompt templates
+├── components/              # React UI (ChatWindow, Markdown, references)
+└── app/                     # Next.js routes (/qa, /api/qa)
+
+scripts/
+├── ingest-local-docs.ts     # Local markdown → parent-child chunks → Pinecone + BM25 + Parent Store
+├── evaluate.ts              # Run eval suite against test cases
+├── vectorize.ts             # Confluence → Pinecone ingestion
+└── verify-pinecone.ts       # Pinecone index inspection
+
+data/
+├── test-docs/               # 29 markdown test documents (short + long)
+├── eval-test-cases.json     # 36 evaluation test cases
+├── bm25-index.json          # BM25 inverted index (generated)
+└── parent-store.json        # Parent chunk content store (generated)
+```
+
+## Evaluation
+
+Run the evaluation suite:
+
+```bash
+pnpm evaluate
+```
+
+Evaluates 36 test cases across factual, how-to, comparison, and general categories. Uses LLM-as-judge to score:
+
+| Metric | Description | Current Score |
+|--------|-------------|---------------|
+| **Faithfulness** | Are answer claims supported by retrieved context? | 0.954 |
+| **Relevancy** | Does the answer address the question? | 0.954 |
+| **Context Precision** | Is the retrieved context relevant? | 0.939 |
+
+Report saved to `logs/eval-report.json`.
+
+## Key Design Decisions
+
+- **CJK-aware token estimation**: `estimateTokens()` accounts for Chinese characters (each ~0.6 tokens) to produce correct chunk sizes for mixed-language documents
+- **Cross-section merging**: Adjacent small sections (headings, code blocks, tables) are greedily merged into 300-800 token parents, preventing fragmented chunks
+- **Graceful degradation**: If parent store is unavailable, `expandToParents()` passes through child results unchanged
+- **Incremental ingestion**: Both BM25 index and parent store support page-level incremental updates, avoiding full rebuilds
