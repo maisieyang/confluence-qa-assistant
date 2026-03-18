@@ -97,7 +97,7 @@ export async function rerank(
       console.debug(JSON.stringify({
         type: 'reranker',
         provider: 'jina',
-        model: JINA_MODEL,
+        model: config.model,
         query,
         latencyMs,
         topK,
