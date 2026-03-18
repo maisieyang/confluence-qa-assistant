@@ -1,9 +1,14 @@
-import { chatCompletion, type ProviderName } from '../providers/modelProvider';
 import type { SearchResult } from '../vectorstore';
 
-const RERANK_MODEL = process.env.RERANK_MODEL ?? 'qwen-turbo';
-const RERANK_PROVIDER: ProviderName = 'qwen';
-const TRACE_RERANK = /^(1|true|yes)$/i.test(process.env.QA_TRACE_RERANK ?? process.env.QA_TRACE_RETRIEVAL ?? '');
+const JINA_RERANK_URL = 'https://api.jina.ai/v1/rerank';
+
+function getJinaConfig() {
+  return {
+    apiKey: process.env.JINA_API_KEY ?? '',
+    model: process.env.JINA_RERANK_MODEL ?? 'jina-reranker-v2-base-multilingual',
+    trace: /^(1|true|yes)$/i.test(process.env.QA_TRACE_RERANK ?? process.env.QA_TRACE_RETRIEVAL ?? ''),
+  };
+}
 
 export interface RerankResult {
   results: SearchResult[];
@@ -11,60 +16,16 @@ export interface RerankResult {
   latencyMs: number;
 }
 
-const RERANK_SYSTEM_PROMPT = `You are a relevance scorer for a search engine. Given a query and a list of document chunks, score each chunk's relevance to the query.
-
-Score from 0 to 10:
-- 10: Directly answers the query with specific, relevant information
-- 7-9: Highly relevant, contains key information related to the query
-- 4-6: Somewhat relevant, tangentially related
-- 1-3: Barely relevant, only shares a few keywords
-- 0: Completely irrelevant
-
-Return ONLY a JSON array of scores in the same order as the chunks. No explanation.
-Example: [8, 3, 10, 1, 6]`;
-
-function buildRerankPrompt(query: string, chunks: SearchResult[]): string {
-  const chunkTexts = chunks.map((c, i) =>
-    `[Chunk ${i + 1}] (title: ${c.chunk.title})\n${c.chunk.content.substring(0, 500)}`
-  ).join('\n\n---\n\n');
-
-  return `Query: "${query}"\n\n${chunkTexts}`;
-}
-
-function parseScores(raw: string, expectedCount: number): number[] {
-  const cleaned = raw
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim();
-
-  try {
-    const parsed = JSON.parse(cleaned);
-    if (Array.isArray(parsed) && parsed.length === expectedCount) {
-      return parsed.map((s) => {
-        const n = Number(s);
-        return Number.isFinite(n) ? Math.max(0, Math.min(10, n)) : 0;
-      });
-    }
-  } catch { /* fall through */ }
-
-  // Fallback: try to extract numbers from the response
-  const numbers = cleaned.match(/\d+(\.\d+)?/g);
-  if (numbers && numbers.length >= expectedCount) {
-    return numbers.slice(0, expectedCount).map((n) => {
-      const val = Number(n);
-      return Number.isFinite(val) ? Math.max(0, Math.min(10, val)) : 0;
-    });
-  }
-
-  // If parsing completely fails, return original order (no reranking)
-  console.warn('Reranker: failed to parse scores, skipping rerank. Raw:', cleaned);
-  return Array(expectedCount).fill(-1);
+interface JinaRerankResponse {
+  results: Array<{
+    index: number;
+    relevance_score: number;
+  }>;
 }
 
 /**
- * Rerank search results using LLM-as-judge.
- * Takes the raw Pinecone results and re-scores them based on semantic relevance.
- * Returns results sorted by reranker score (descending).
+ * Rerank search results using Jina Reranker (Cross-Encoder).
+ * Sends query + document pairs to Jina API, returns results sorted by relevance_score.
  */
 export async function rerank(
   query: string,
@@ -75,56 +36,84 @@ export async function rerank(
     return { results: [], rerankerScores: [], latencyMs: 0 };
   }
 
-  // If only a few results, reranking adds cost without much benefit
   if (results.length <= topK) {
     return { results, rerankerScores: results.map(() => -1), latencyMs: 0 };
   }
 
+  const config = getJinaConfig();
+
+  if (!config.apiKey) {
+    console.warn('Reranker: JINA_API_KEY not set, skipping rerank');
+    return { results: results.slice(0, topK), rerankerScores: results.slice(0, topK).map(() => -1), latencyMs: 0 };
+  }
+
   const start = Date.now();
 
-  const { text } = await chatCompletion({
-    messages: [
-      { role: 'system', content: RERANK_SYSTEM_PROMPT },
-      { role: 'user', content: buildRerankPrompt(query, results) },
-    ],
-    temperature: 0,
-    model: RERANK_MODEL,
-    provider: RERANK_PROVIDER,
-  });
+  // Prepare documents — send chunk content (truncated to 1000 chars for efficiency)
+  const documents = results.map((r) => r.chunk.content.substring(0, 1000));
 
-  const scores = parseScores(text, results.length);
-  const latencyMs = Date.now() - start;
+  try {
+    const response = await fetch(JINA_RERANK_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${config.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: config.model,
+        query,
+        documents,
+        top_n: topK,
+      }),
+    });
 
-  // If parsing failed (all -1), return original order
-  if (scores.every((s) => s === -1)) {
-    return { results: results.slice(0, topK), rerankerScores: scores.slice(0, topK), latencyMs };
-  }
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.warn(`Reranker: Jina API error ${response.status}: ${errorText}`);
+      return { results: results.slice(0, topK), rerankerScores: results.slice(0, topK).map(() => -1), latencyMs: Date.now() - start };
+    }
 
-  // Pair results with scores and sort by reranker score descending
-  const paired = results.map((r, i) => ({ result: r, score: scores[i] }));
-  paired.sort((a, b) => b.score - a.score);
+    const data = (await response.json()) as JinaRerankResponse;
+    const latencyMs = Date.now() - start;
 
-  const reranked = paired.slice(0, topK);
-
-  if (TRACE_RERANK) {
-    console.debug(JSON.stringify({
-      type: 'reranker',
-      query,
-      latencyMs,
-      scores: paired.map((p, i) => ({
-        rank: i + 1,
-        title: p.result.chunk.title,
-        heading: p.result.chunk.heading,
-        vectorScore: Number(p.result.score.toFixed(4)),
-        rerankerScore: p.score,
-        included: i < topK,
-      })),
+    // Map Jina results back to our SearchResult objects
+    const reranked = data.results.map((jr) => ({
+      result: results[jr.index],
+      score: jr.relevance_score,
     }));
-  }
 
-  return {
-    results: reranked.map((p) => p.result),
-    rerankerScores: reranked.map((p) => p.score),
-    latencyMs,
-  };
+    if (config.trace) {
+      // Build full trace including non-selected results
+      const selectedIndices = new Set(data.results.map((r) => r.index));
+      const allScored = data.results.map((jr, rank) => ({
+        rank: rank + 1,
+        title: results[jr.index].chunk.title,
+        heading: results[jr.index].chunk.heading,
+        vectorScore: Number(results[jr.index].score.toFixed(4)),
+        rerankerScore: Number(jr.relevance_score.toFixed(4)),
+        included: true,
+      }));
+
+      console.debug(JSON.stringify({
+        type: 'reranker',
+        provider: 'jina',
+        model: JINA_MODEL,
+        query,
+        latencyMs,
+        topK,
+        inputCount: results.length,
+        scores: allScored,
+      }));
+    }
+
+    return {
+      results: reranked.map((p) => p.result),
+      rerankerScores: reranked.map((p) => p.score),
+      latencyMs,
+    };
+  } catch (error) {
+    const latencyMs = Date.now() - start;
+    console.warn('Reranker: Jina API call failed:', error instanceof Error ? error.message : String(error));
+    return { results: results.slice(0, topK), rerankerScores: results.slice(0, topK).map(() => -1), latencyMs };
+  }
 }

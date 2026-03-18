@@ -1,6 +1,6 @@
 import { chatCompletion, type ProviderName } from '../providers/modelProvider';
 
-const EVAL_MODEL = process.env.EVAL_MODEL ?? 'qwen-turbo';
+const EVAL_MODEL = process.env.EVAL_MODEL ?? 'qwen-max';
 const EVAL_PROVIDER: ProviderName = 'qwen';
 
 export interface EvalScores {

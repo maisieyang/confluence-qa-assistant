@@ -23,9 +23,9 @@ const RERANK_ENABLED = !/^(0|false|no)$/i.test(process.env.RERANK_ENABLED ?? 'tr
 const RETRIEVAL_TOP_K = Number(process.env.RETRIEVAL_TOP_K ?? '15');
 const FALLBACK_SIMILARITY_THRESHOLD = Number(process.env.QA_FALLBACK_THRESHOLD ?? '0.50');
 
-// Reranker score thresholds (0-10 scale)
-const RERANK_SCORE_THRESHOLD = Number(process.env.RERANK_SCORE_THRESHOLD ?? '7');
-const RERANK_FALLBACK_THRESHOLD = Number(process.env.RERANK_FALLBACK_THRESHOLD ?? '4');
+// Reranker score thresholds (0-1 scale, Jina Cross-Encoder)
+const RERANK_SCORE_THRESHOLD = Number(process.env.RERANK_SCORE_THRESHOLD ?? '0.5');
+const RERANK_FALLBACK_THRESHOLD = Number(process.env.RERANK_FALLBACK_THRESHOLD ?? '0.1');
 
 interface AnswerReferences {
   index: number;
