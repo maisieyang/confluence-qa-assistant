@@ -1,4 +1,5 @@
 import { PineconeStore, SearchResult } from '../vectorstore';
+import { getParentStoreReader, parseParentNodeId } from '../vectorstore/parentStore';
 import {
   chatCompletion,
   chatCompletionStream,
@@ -96,6 +97,63 @@ function buildContext(results: SearchResult[]): { context: string; references: A
 }
 
 const FALLBACK_INSTRUCTIONS = `${QA_USER_PROMPT_INSTRUCTIONS}\n- No relevant documents were found. Tell the user clearly: "I could not find relevant information in the current documents." Do NOT answer from general knowledge.`;
+
+/**
+ * Expand child-level dense search results to parent-level.
+ * Replaces each child chunk's content/id with its parent's, deduplicates by parent ID
+ * keeping the highest child score. Falls back gracefully if parent store is unavailable.
+ */
+async function expandToParents(results: SearchResult[]): Promise<SearchResult[]> {
+  if (results.length === 0) return results;
+
+  const reader = await getParentStoreReader();
+  if (!reader) return results;
+
+  const bestByParent = new Map<string, SearchResult>();
+
+  for (const result of results) {
+    const parentId = parseParentNodeId(result.chunk.nodeId);
+    if (!parentId) {
+      // Not a child ID (legacy data) — keep as-is, keyed by original ID
+      const existing = bestByParent.get(result.chunk.id);
+      if (!existing || result.score > existing.score) {
+        bestByParent.set(result.chunk.id, result);
+      }
+      continue;
+    }
+
+    const parent = reader.getParent(parentId);
+    if (!parent) {
+      // Parent not found — keep child as-is
+      const existing = bestByParent.get(result.chunk.id);
+      if (!existing || result.score > existing.score) {
+        bestByParent.set(result.chunk.id, result);
+      }
+      continue;
+    }
+
+    const existing = bestByParent.get(parentId);
+    if (!existing || result.score > existing.score) {
+      bestByParent.set(parentId, {
+        score: result.score,
+        chunk: {
+          ...result.chunk,
+          id: parentId,
+          nodeId: parentId,
+          content: parent.content,
+          tokenEstimate: parent.tokenEstimate,
+          heading: parent.heading,
+          headingPath: parent.headingPath,
+          chunkIndex: parent.chunkIndex,
+          chunkType: 'parent',
+          parentNodeId: undefined,
+        },
+      });
+    }
+  }
+
+  return Array.from(bestByParent.values()).sort((a, b) => b.score - a.score);
+}
 
 export class QAEngine {
   constructor(
@@ -241,9 +299,12 @@ export class QAEngine {
     const searchQueries = queryTransform.queries;
     const wideTopK = RERANK_ENABLED ? RETRIEVAL_TOP_K : this.topK;
 
-    const densePromise = searchQueries.length === 1
-      ? this.store.search(searchQueries[0], wideTopK)
-      : this.multiQuerySearch(searchQueries);
+    const densePromise = (async () => {
+      const raw = searchQueries.length === 1
+        ? await this.store.search(searchQueries[0], wideTopK)
+        : await this.multiQuerySearch(searchQueries);
+      return expandToParents(raw);
+    })();
 
     let rawResults: SearchResult[];
 

@@ -96,6 +96,8 @@ type ChunkMetadata = {
   source_url?: string;
   pii_flag: boolean;
   content: string;
+  parent_node_id?: string;
+  chunk_type?: 'parent' | 'child';
 };
 
 type PineconeVector = {
@@ -120,6 +122,8 @@ export interface RetrievedChunk {
   etag?: string;
   spaceKey?: string;
   piiFlag: boolean;
+  parentNodeId?: string;
+  chunkType?: 'parent' | 'child';
 }
 
 export interface SearchResult {
@@ -205,6 +209,8 @@ export class PineconeStore {
             source_url: chunk.sourceUrl,
             pii_flag: chunk.piiFlag,
             content: chunk.content,
+            ...(chunk.parentNodeId ? { parent_node_id: chunk.parentNodeId } : {}),
+            ...(chunk.chunkType ? { chunk_type: chunk.chunkType } : {}),
           },
         };
       });
@@ -258,6 +264,8 @@ export class PineconeStore {
             etag: metadata.etag,
             spaceKey: metadata.space_key,
             piiFlag: Boolean(metadata.pii_flag),
+            parentNodeId: metadata.parent_node_id,
+            chunkType: metadata.chunk_type,
           },
           score: match.score ?? 0,
         } as SearchResult;

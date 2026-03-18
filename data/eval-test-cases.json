@@ -78,5 +78,125 @@
     "id": "tc-016",
     "question": "What is the password policy?",
     "category": "factual"
+  },
+  {
+    "id": "tc-017",
+    "question": "Kubernetes 生产集群有多少个节点？使用了哪些节点池？",
+    "category": "factual",
+    "notes": "Tests retrieval from long K8s doc - specific numeric details"
+  },
+  {
+    "id": "tc-018",
+    "question": "How does the canary deployment work? What are the automatic rollback conditions?",
+    "category": "how-to",
+    "notes": "Tests multi-section retrieval from K8s doc"
+  },
+  {
+    "id": "tc-019",
+    "question": "CI/CD 流水线中安全扫描包括哪些工具？扫描失败会怎样？",
+    "category": "factual",
+    "notes": "Tests retrieval from CI/CD doc - security section"
+  },
+  {
+    "id": "tc-020",
+    "question": "What is the deployment promotion strategy from dev to production?",
+    "category": "how-to",
+    "notes": "Tests retrieval of environment promotion flow"
+  },
+  {
+    "id": "tc-021",
+    "question": "公司数据平台的 CDC 延迟是多少？用了什么工具？",
+    "category": "factual",
+    "notes": "Tests specific metric retrieval from data platform doc"
+  },
+  {
+    "id": "tc-022",
+    "question": "ClickHouse 集群的配置是什么？有多少数据？",
+    "category": "factual",
+    "notes": "Tests infrastructure detail retrieval"
+  },
+  {
+    "id": "tc-023",
+    "question": "API Gateway 支持哪些认证方式？JWT 的有效期是多少？",
+    "category": "factual",
+    "notes": "Tests multi-part factual from API gateway doc"
+  },
+  {
+    "id": "tc-024",
+    "question": "How do I handle a SEV-1 incident? What are the first steps?",
+    "category": "how-to",
+    "notes": "Tests procedure retrieval from incident playbook"
+  },
+  {
+    "id": "tc-025",
+    "question": "Post-Mortem 的时间要求是什么？需要包含哪些内容？",
+    "category": "factual",
+    "notes": "Tests retrieval from incident doc - post-mortem section"
+  },
+  {
+    "id": "tc-026",
+    "question": "ML 平台使用什么工具做模型部署？推理延迟要求是多少？",
+    "category": "factual",
+    "notes": "Tests retrieval from ML platform doc"
+  },
+  {
+    "id": "tc-027",
+    "question": "Feature Store 有哪些核心特征集？用什么技术实现？",
+    "category": "factual",
+    "notes": "Tests table/list retrieval from ML doc"
+  },
+  {
+    "id": "tc-028",
+    "question": "员工补充商业保险覆盖哪些内容？重大疾病保额是多少？",
+    "category": "factual",
+    "notes": "Tests detailed benefit info from employee handbook"
+  },
+  {
+    "id": "tc-029",
+    "question": "产假多少天？陪产假呢？返岗后有什么保护措施？",
+    "category": "factual",
+    "notes": "Tests multiple related facts from benefits doc"
+  },
+  {
+    "id": "tc-030",
+    "question": "How do I view service logs in production? What format should logs be in?",
+    "category": "how-to",
+    "notes": "Tests retrieval from observability doc"
+  },
+  {
+    "id": "tc-031",
+    "question": "Prometheus 指标命名规范是什么？如何避免指标爆炸？",
+    "category": "factual",
+    "notes": "Tests best practice retrieval from observability doc"
+  },
+  {
+    "id": "tc-032",
+    "question": "申请生产数据库读写权限需要谁审批？临时权限有效期多长？",
+    "category": "factual",
+    "notes": "Tests access control approval matrix"
+  },
+  {
+    "id": "tc-033",
+    "question": "离职后权限怎么处理？邮箱多久后归档？",
+    "category": "factual",
+    "notes": "Tests lifecycle management from access control doc"
+  },
+  {
+    "id": "tc-034",
+    "question": "Kong 网关的限流策略是什么？被限流时客户端会收到什么响应？",
+    "category": "factual",
+    "notes": "Tests rate limiting details from API gateway doc"
+  },
+  {
+    "id": "tc-035",
+    "question": "公司的 SLO 目标分别是多少？Error Budget 消耗超过阈值后怎么办？",
+    "category": "factual",
+    "notes": "Tests SLO/error budget from observability doc"
+  },
+  {
+    "id": "tc-036",
+    "question": "数据质量检查有哪些类型？用什么工具做的？",
+    "category": "factual",
+    "notes": "Tests data quality section from data platform doc"
   }
 ]

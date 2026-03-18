@@ -3,7 +3,7 @@ import {
   ConfluenceClient,
   type ConfluenceClientOptions,
   cleanConfluencePage,
-  chunkPage,
+  chunkPageParentChild,
   type CleanConfluencePage,
   type PageChunk,
 } from '../confluence';
@@ -29,6 +29,12 @@ import {
   type SkippedPageLog,
   type ChunkLogEntry,
 } from './vectorLog';
+import {
+  loadParentStore,
+  saveParentStore,
+  incrementalUpdateParentStore,
+  resetParentStoreReader,
+} from '../vectorstore/parentStore';
 
 const DEFAULT_MAX_PAGES = Number(process.env.CONFLUENCE_MAX_PAGES ?? '5');
 const DEFAULT_PAGE_LIMIT = Number(process.env.CONFLUENCE_PAGE_LIMIT ?? '25');
@@ -180,6 +186,7 @@ export async function buildKnowledgeBase(
   const embeddedPages: CleanConfluencePage[] = [];
   const skippedPages: CleanConfluencePage[] = [];
   const embeddedChunks: PageChunk[] = [];
+  const allParentChunks: PageChunk[] = [];
   const embeddedPageLogs: EmbeddedPageLog[] = [];
   const skippedPageLogs: SkippedPageLog[] = [];
   const chunkLogEntries: ChunkLogEntry[] = [];
@@ -195,13 +202,13 @@ export async function buildKnowledgeBase(
       continue;
     }
 
-    const chunks = chunkPage(page, {
+    const { parents, children } = chunkPageParentChild(page, {
       minTokens: options.chunkMinTokens,
       maxTokens: options.chunkMaxTokens,
       embedVersion,
     });
 
-    if (chunks.length === 0) {
+    if (children.length === 0) {
       console.log(`Skipping ${page.title} — no content after chunking`);
       skippedPages.push(page);
       skippedPageLogs.push(buildSkippedPageLog(page, ['no content after chunking']));
@@ -210,35 +217,45 @@ export async function buildKnowledgeBase(
 
     const reasonText = reasons.length > 0 ? reasons.join(', ') : 're-embedding requested';
     console.log(
-      `Embedding ${page.title} — ${chunks.length} chunk${chunks.length === 1 ? '' : 's'} (${reasonText})`
+      `Embedding ${page.title} — ${parents.length} parents, ${children.length} children (${reasonText})`
     );
 
     await store.deletePageChunks(page.pageId);
-    await store.upsertChunks(chunks);
+    await store.upsertChunks(children);
 
     embeddedPages.push(page);
-    embeddedChunks.push(...chunks);
-    embeddedPageLogs.push(buildEmbeddedPageLog(page, chunks.length));
-    chunkLogEntries.push(...buildChunkLogEntries(chunks));
+    embeddedChunks.push(...children);
+    allParentChunks.push(...parents);
+    embeddedPageLogs.push(buildEmbeddedPageLog(page, children.length));
+    chunkLogEntries.push(...buildChunkLogEntries(children));
 
     const embeddedAt = new Date().toISOString();
-    updateCacheEntry(cache, page, embedVersion, chunks, embeddedAt);
+    updateCacheEntry(cache, page, embedVersion, children, embeddedAt);
   }
 
   await saveVectorCache(cache);
 
-  // --- BM25 incremental update ---
-  // Load existing BM25 index (contains content of all docs including unchanged ones),
-  // remove entries for changed pages, add new chunks, rebuild invertedIndex.
-  if (embeddedChunks.length > 0) {
+  // --- BM25 + Parent Store incremental update ---
+  if (allParentChunks.length > 0) {
     const changedPageIds = new Set(embeddedPages.map((p) => p.pageId));
+
+    // BM25: index parent chunks (larger text for better keyword matching)
     const existingBM25 = await loadBM25Index();
-    const updatedBM25 = incrementalUpdateBM25Index(existingBM25, changedPageIds, embeddedChunks);
+    const updatedBM25 = incrementalUpdateBM25Index(existingBM25, changedPageIds, allParentChunks);
     await saveBM25Index(updatedBM25);
-    resetBM25Searcher(); // Force singleton reload on next query
+    resetBM25Searcher();
     console.log(
       `BM25 index updated: ${updatedBM25.docCount} docs, ${Object.keys(updatedBM25.invertedIndex).length} terms ` +
-      `(${changedPageIds.size} page(s) changed, ${embeddedChunks.length} chunk(s) replaced)`
+      `(${changedPageIds.size} page(s) changed, ${allParentChunks.length} parent(s) replaced)`
+    );
+
+    // Parent store: update for context expansion at query time
+    const existingParentStore = await loadParentStore();
+    const updatedParentStore = incrementalUpdateParentStore(existingParentStore, changedPageIds, allParentChunks);
+    await saveParentStore(updatedParentStore);
+    resetParentStoreReader();
+    console.log(
+      `Parent store updated: ${Object.keys(updatedParentStore.parents).length} parents`
     );
   }
 

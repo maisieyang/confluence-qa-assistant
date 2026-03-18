@@ -2,9 +2,10 @@ import { config as loadEnv } from 'dotenv';
 import { File as NodeFile } from 'node:buffer';
 import { promises as fs } from 'node:fs';
 import { join, basename } from 'node:path';
-import { chunkPage, type CleanConfluencePage } from '../src/lib/confluence';
+import { chunkPageParentChild, type CleanConfluencePage } from '../src/lib/confluence';
 import { getEmbeddingModelVersion } from '../src/lib/providers/modelProvider';
 import { getPineconeStore } from '../src/lib/vectorstore';
+import { buildParentStore, saveParentStore } from '../src/lib/vectorstore/parentStore';
 import { buildBM25Index } from '../src/lib/search';
 import type { PageChunk } from '../src/lib/confluence/chunk';
 
@@ -61,36 +62,47 @@ async function main() {
   const embedVersion = getEmbeddingModelVersion();
   const store = await getPineconeStore();
 
-  let totalChunks = 0;
-  const allChunks: PageChunk[] = [];
+  let totalChildren = 0;
+  let totalParents = 0;
+  const allParents: PageChunk[] = [];
+  const allChildren: PageChunk[] = [];
 
   for (const page of pages) {
-    const chunks = chunkPage(page, { embedVersion });
+    const { parents, children } = chunkPageParentChild(page, { embedVersion });
 
-    if (chunks.length === 0) {
+    if (children.length === 0) {
       console.log(`  SKIP  ${page.title} — no content after chunking`);
       continue;
     }
 
-    // Delete old chunks for this page, then upsert new ones
+    // Delete old chunks for this page, then upsert children to Pinecone
     await store.deletePageChunks(page.pageId);
-    await store.upsertChunks(chunks);
+    await store.upsertChunks(children);
 
-    allChunks.push(...chunks);
-    totalChunks += chunks.length;
-    console.log(`  DONE  ${page.title} — ${chunks.length} chunks`);
+    allParents.push(...parents);
+    allChildren.push(...children);
+    totalParents += parents.length;
+    totalChildren += children.length;
+    console.log(`  DONE  ${page.title} — ${parents.length} parents, ${children.length} children`);
   }
 
-  // Build BM25 index for hybrid search
-  const bm25Index = buildBM25Index(allChunks);
+  // Build BM25 index from parents (larger chunks for better keyword matching)
+  const bm25Index = buildBM25Index(allParents);
   const bm25Path = join(process.cwd(), 'data', 'bm25-index.json');
   await fs.writeFile(bm25Path, JSON.stringify(bm25Index), 'utf-8');
   console.log(`\n  BM25 index: ${bm25Index.docCount} docs, ${Object.keys(bm25Index.invertedIndex).length} terms → ${bm25Path}`);
 
+  // Build and save parent store for context expansion
+  const parentStoreData = buildParentStore(allParents);
+  const parentStorePath = join(process.cwd(), 'data', 'parent-store.json');
+  await saveParentStore(parentStoreData, parentStorePath);
+  console.log(`  Parent store: ${Object.keys(parentStoreData.parents).length} parents → ${parentStorePath}`);
+
   console.log(`\n${'='.repeat(50)}`);
-  console.log(`Pages:  ${pages.length}`);
-  console.log(`Chunks: ${totalChunks}`);
-  console.log(`Model:  ${embedVersion}`);
+  console.log(`Pages:    ${pages.length}`);
+  console.log(`Parents:  ${totalParents}`);
+  console.log(`Children: ${totalChildren} (embedded in Pinecone)`);
+  console.log(`Model:    ${embedVersion}`);
   console.log(`Done.`);
 }
 
