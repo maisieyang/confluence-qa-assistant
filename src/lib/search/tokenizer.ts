@@ -21,6 +21,16 @@ const EN_STOPWORDS = new Set([
   'me', 'him', 'us', 'what', 'which', 'who', 'whom',
 ]);
 
+// Chinese single-character stopwords — high-frequency function words with near-zero
+// discriminative value. Filtered at the unigram level; bigrams containing these chars
+// are kept because they may carry meaning (e.g. "的确", "在于").
+const ZH_STOPWORDS = new Set([
+  '的', '了', '在', '是', '我', '有', '和', '就', '不', '人',
+  '都', '一', '一个', '上', '也', '很', '到', '说', '要', '去',
+  '你', '会', '着', '没有', '看', '好', '自己', '这', '他', '她',
+  '么', '那', '被', '从', '把', '它', '年', '多', '为', '与',
+]);
+
 // CJK Unified Ideographs range
 const CJK_REGEX = /[\u4e00-\u9fff\u3400-\u4dbf]/;
 const CJK_CHAR_REGEX = /[\u4e00-\u9fff\u3400-\u4dbf]/g;
@@ -37,11 +47,13 @@ function tokenizeChinese(text: string): string[] {
   if (chars.length === 0) return [];
 
   const tokens: string[] = [];
-  // Unigrams
+  // Unigrams (skip stopwords)
   for (const ch of chars) {
-    tokens.push(ch);
+    if (!ZH_STOPWORDS.has(ch)) {
+      tokens.push(ch);
+    }
   }
-  // Bigrams
+  // Bigrams (keep all — bigrams may carry meaning even if one char is a stopword)
   for (let i = 0; i < chars.length - 1; i++) {
     tokens.push(chars[i] + chars[i + 1]);
   }

@@ -10,6 +10,12 @@ import {
 import { getEmbeddingModelVersion } from '../providers/modelProvider';
 import { getPineconeStore, PineconeStore } from '../vectorstore';
 import {
+  incrementalUpdateBM25Index,
+  loadBM25Index,
+  saveBM25Index,
+  resetBM25Searcher,
+} from '../search';
+import {
   loadVectorCache,
   saveVectorCache,
   evaluatePageChange,
@@ -220,6 +226,21 @@ export async function buildKnowledgeBase(
   }
 
   await saveVectorCache(cache);
+
+  // --- BM25 incremental update ---
+  // Load existing BM25 index (contains content of all docs including unchanged ones),
+  // remove entries for changed pages, add new chunks, rebuild invertedIndex.
+  if (embeddedChunks.length > 0) {
+    const changedPageIds = new Set(embeddedPages.map((p) => p.pageId));
+    const existingBM25 = await loadBM25Index();
+    const updatedBM25 = incrementalUpdateBM25Index(existingBM25, changedPageIds, embeddedChunks);
+    await saveBM25Index(updatedBM25);
+    resetBM25Searcher(); // Force singleton reload on next query
+    console.log(
+      `BM25 index updated: ${updatedBM25.docCount} docs, ${Object.keys(updatedBM25.invertedIndex).length} terms ` +
+      `(${changedPageIds.size} page(s) changed, ${embeddedChunks.length} chunk(s) replaced)`
+    );
+  }
 
   const logPayload: VectorizationLog = {
     generatedAt: new Date().toISOString(),
