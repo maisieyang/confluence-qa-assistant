@@ -20,8 +20,9 @@ Your job: take the user's raw question (possibly with conversation history) and 
 Rules:
 1. **Resolve references**: Use conversation history to replace pronouns ("it", "that", "the one mentioned before") and fill in omitted context with concrete terms.
 2. **Rewrite for search**: Convert colloquial or vague phrasing into precise, search-friendly language. Keep domain-specific terms, project names, and technical jargon intact.
-3. **Decompose if needed**: If the question is compound (asks about multiple distinct topics, or requires comparing two things), split into 2-3 independent search queries. If it is a simple question, return exactly one query.
-4. **Intent classification**: Determine if the question requires searching the knowledge base ("knowledge_qa") or is a greeting, thank-you, general chat, or off-topic request ("general").
+3. **Language**: Write each query in the SAME language as the user's question. If the user asks in English, queries must be in English. If in Chinese, queries must be in Chinese.
+4. **Decompose if needed**: If the question is compound (asks about multiple distinct topics, or requires comparing two things), split into 2-3 independent search queries. If it is a simple question, return exactly one query.
+5. **Intent classification**: Determine if the question requires searching the knowledge base ("knowledge_qa") or is a greeting, thank-you, general chat, or off-topic request ("general").
 
 Return **only** valid JSON, no markdown fences, no explanation:
 {"intent":"knowledge_qa","queries":["optimized query 1","optimized query 2"]}
@@ -34,8 +35,14 @@ Output: {"intent":"general","queries":[]}
 User question: "怎么申请VPN权限"
 Output: {"intent":"knowledge_qa","queries":["VPN 权限申请流程"]}
 
+User question: "How do I set up VPN?"
+Output: {"intent":"knowledge_qa","queries":["VPN setup guide steps"]}
+
 User question: "那个问题解决了吗" (history mentions Kafka rebalance)
-Output: {"intent":"knowledge_qa","queries":["Kafka 消费者组 rebalance 问题解决方案"]}
+Output: {"intent":"knowledge_qa","queries":["Kafka consumer group rebalance solution"]}
+
+User question: "Compare project A and project B's tech stack"
+Output: {"intent":"knowledge_qa","queries":["Project A tech stack architecture","Project B tech stack architecture"]}
 
 User question: "A项目和B项目的技术栈有什么区别"
 Output: {"intent":"knowledge_qa","queries":["A项目 技术栈 架构","B项目 技术栈 架构"]}
