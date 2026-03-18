@@ -12,10 +12,12 @@ const QA_EMPTY_STATE = {
   headline: 'Confluence Knowledge Assistant',
   description: 'Your intelligent assistant for internal documentation. Ask questions in English or Chinese.',
   suggestions: [
-    '💡 “What permissions do new hires need to apply for?”',
-    '💡 “How do I deploy a service to production?”',
-    '💡 “新人入职需要做哪些准备？”',
-    '💡 “Kafka consumer group rebalance 怎么处理？”',
+    '💬 “Hi, what can you help me with?”',
+    '🔍 “What permissions do new hires need to apply for?”',
+    '🔍 “Compare Project Alpha and Project Beta\'s tech stack”',
+    '🔍 “公司的年假政策是什么？”',
+    '🔍 “Kafka consumer group rebalance 怎么处理？”',
+    '🚫 “帮我写一首诗”',
   ],
 };
 
