@@ -20,7 +20,7 @@ Your job: take the user's raw question (possibly with conversation history) and 
 Rules:
 1. **Resolve references**: Use conversation history to replace pronouns ("it", "that", "the one mentioned before") and fill in omitted context with concrete terms.
 2. **Rewrite for search**: Convert colloquial or vague phrasing into precise, search-friendly language. Keep domain-specific terms, project names, and technical jargon intact.
-3. **Language**: Write each query in the SAME language as the user's question. If the user asks in English, queries must be in English. If in Chinese, queries must be in Chinese.
+3. **CRITICAL — Language matching**: The queries MUST be in the SAME language as the user's question. English question → English queries. Chinese question → Chinese queries. NEVER translate. This is the most important rule.
 4. **Decompose if needed**: If the question is compound (asks about multiple distinct topics, or requires comparing two things), split into 2-3 independent search queries. If it is a simple question, return exactly one query.
 5. **Intent classification**: Determine if the question requires searching the knowledge base ("knowledge_qa") or is a greeting, thank-you, general chat, or off-topic request ("general").
 
@@ -29,26 +29,32 @@ Return **only** valid JSON, no markdown fences, no explanation:
 
 Examples:
 
+User question (English): "How do I set up VPN?"
+Output: {"intent":"knowledge_qa","queries":["VPN setup guide steps"]}
+
+User question (English): "What permissions do new hires need?"
+Output: {"intent":"knowledge_qa","queries":["new hire onboarding permissions access"]}
+
+User question (English): "Compare project A and project B's tech stack"
+Output: {"intent":"knowledge_qa","queries":["Project A tech stack architecture","Project B tech stack architecture"]}
+
+User question (Chinese): "怎么申请VPN权限"
+Output: {"intent":"knowledge_qa","queries":["VPN 权限申请流程"]}
+
+User question (Chinese): "A项目和B项目的技术栈有什么区别"
+Output: {"intent":"knowledge_qa","queries":["A项目 技术栈 架构","B项目 技术栈 架构"]}
+
 User question: "你好"
 Output: {"intent":"general","queries":[]}
 
-User question: "怎么申请VPN权限"
-Output: {"intent":"knowledge_qa","queries":["VPN 权限申请流程"]}
-
-User question: "How do I set up VPN?"
-Output: {"intent":"knowledge_qa","queries":["VPN setup guide steps"]}
-
-User question: "那个问题解决了吗" (history mentions Kafka rebalance)
-Output: {"intent":"knowledge_qa","queries":["Kafka consumer group rebalance solution"]}
-
-User question: "Compare project A and project B's tech stack"
-Output: {"intent":"knowledge_qa","queries":["Project A tech stack architecture","Project B tech stack architecture"]}
-
-User question: "A项目和B项目的技术栈有什么区别"
-Output: {"intent":"knowledge_qa","queries":["A项目 技术栈 架构","B项目 技术栈 架构"]}
-
 User question: "帮我写一首诗"
 Output: {"intent":"general","queries":[]}`;
+
+function detectLanguage(text: string): 'English' | 'Chinese' {
+  const chineseChars = text.match(/[\u4e00-\u9fff]/g);
+  const ratio = chineseChars ? chineseChars.length / text.length : 0;
+  return ratio > 0.1 ? 'Chinese' : 'English';
+}
 
 function buildTransformUserPrompt(question: string, chatHistory?: string): string {
   const parts: string[] = [];
@@ -57,7 +63,9 @@ function buildTransformUserPrompt(question: string, chatHistory?: string): strin
     parts.push(`Conversation history:\n${chatHistory.trim()}`);
   }
 
-  parts.push(`User question: ${question}`);
+  const lang = detectLanguage(question);
+  parts.push(`User question (${lang}): ${question}`);
+  parts.push(`REMINDER: Output queries MUST be in ${lang}. Do NOT translate.`);
 
   return parts.join('\n\n');
 }
