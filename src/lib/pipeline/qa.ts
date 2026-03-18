@@ -17,11 +17,15 @@ import { startTimer, writeObservation, type QAObservation } from './qaObservatio
 import { rerank } from './reranker';
 
 const DEFAULT_TEMPERATURE = 0.4;
-const DEFAULT_SIMILARITY_THRESHOLD = Number(process.env.SIMILARITY_THRESHOLD ?? '0.75');
+const DEFAULT_SIMILARITY_THRESHOLD = Number(process.env.SIMILARITY_THRESHOLD ?? '0.65');
 const TRACE_RETRIEVAL = /^(1|true|yes)$/i.test(process.env.QA_TRACE_RETRIEVAL ?? '');
 const RERANK_ENABLED = !/^(0|false|no)$/i.test(process.env.RERANK_ENABLED ?? 'true');
-const RETRIEVAL_TOP_K = Number(process.env.RETRIEVAL_TOP_K ?? '15'); // Wide net for reranker
-const FALLBACK_SIMILARITY_THRESHOLD = Number(process.env.QA_FALLBACK_THRESHOLD ?? '0.6');
+const RETRIEVAL_TOP_K = Number(process.env.RETRIEVAL_TOP_K ?? '15');
+const FALLBACK_SIMILARITY_THRESHOLD = Number(process.env.QA_FALLBACK_THRESHOLD ?? '0.50');
+
+// Reranker score thresholds (0-10 scale)
+const RERANK_SCORE_THRESHOLD = Number(process.env.RERANK_SCORE_THRESHOLD ?? '7');
+const RERANK_FALLBACK_THRESHOLD = Number(process.env.RERANK_FALLBACK_THRESHOLD ?? '4');
 
 interface AnswerReferences {
   index: number;
@@ -240,32 +244,56 @@ export class QAEngine {
 
     // Step 4: Rerank — use LLM to re-score results by semantic relevance
     let rerankLatency = 0;
+    let rerankerScores: number[] = [];
     let rerankedResults = rawResults;
     if (RERANK_ENABLED && rawResults.length > this.topK) {
       const rerankResult = await rerank(question, rawResults, this.topK);
       rerankedResults = rerankResult.results;
+      rerankerScores = rerankResult.rerankerScores;
       rerankLatency = rerankResult.latencyMs;
     }
 
-    let relevantResults = rerankedResults.filter((result) => result.score >= this.similarityThreshold);
-
-    const fallbackThresholdValid = Number.isFinite(FALLBACK_SIMILARITY_THRESHOLD)
-      && FALLBACK_SIMILARITY_THRESHOLD > 0
-      && FALLBACK_SIMILARITY_THRESHOLD < 1;
-
+    // Step 5: Filter by relevance — use reranker scores when available, else vector scores
+    let relevantResults: SearchResult[];
     let fallbackApplied = false;
-    if (relevantResults.length === 0 && rerankedResults.length > 0 && fallbackThresholdValid) {
-      const fallbackResults = rerankedResults.filter((result) => result.score >= FALLBACK_SIMILARITY_THRESHOLD);
-      if (fallbackResults.length > 0) {
-        relevantResults = fallbackResults;
-        fallbackApplied = true;
+    const hasRerankerScores = rerankerScores.length > 0 && rerankerScores.some((s) => s >= 0);
+
+    if (hasRerankerScores) {
+      // Reranker-driven filtering (0-10 scale)
+      const paired = rerankedResults.map((r, i) => ({ result: r, rerankScore: rerankerScores[i] ?? 0 }));
+
+      const highConfidence = paired.filter((p) => p.rerankScore >= RERANK_SCORE_THRESHOLD);
+      if (highConfidence.length > 0) {
+        relevantResults = highConfidence.map((p) => p.result);
       } else {
-        relevantResults = [rerankedResults[0]];
-        fallbackApplied = true;
+        const mediumConfidence = paired.filter((p) => p.rerankScore >= RERANK_FALLBACK_THRESHOLD);
+        if (mediumConfidence.length > 0) {
+          relevantResults = mediumConfidence.map((p) => p.result);
+          fallbackApplied = true;
+        } else if (paired.length > 0 && paired[0].rerankScore > 0) {
+          relevantResults = [paired[0].result];
+          fallbackApplied = true;
+        } else {
+          relevantResults = [];
+        }
+      }
+    } else {
+      // Fallback to vector score filtering (cosine similarity, 0-1 scale)
+      relevantResults = rerankedResults.filter((result) => result.score >= this.similarityThreshold);
+
+      if (relevantResults.length === 0 && rerankedResults.length > 0) {
+        const fallbackResults = rerankedResults.filter((result) => result.score >= FALLBACK_SIMILARITY_THRESHOLD);
+        if (fallbackResults.length > 0) {
+          relevantResults = fallbackResults;
+          fallbackApplied = true;
+        } else {
+          relevantResults = [rerankedResults[0]];
+          fallbackApplied = true;
+        }
       }
     }
 
-    // Cap results to topK after rerank
+    // Cap results to topK
     if (relevantResults.length > this.topK) {
       relevantResults = relevantResults.slice(0, this.topK);
     }
@@ -274,7 +302,9 @@ export class QAEngine {
     const retrievalTrace: RetrievalTrace = {
       threshold: this.similarityThreshold,
       fallbackApplied,
-      fallbackThreshold: fallbackApplied && fallbackThresholdValid ? FALLBACK_SIMILARITY_THRESHOLD : undefined,
+      fallbackThreshold: fallbackApplied
+        ? (hasRerankerScores ? RERANK_FALLBACK_THRESHOLD : FALLBACK_SIMILARITY_THRESHOLD)
+        : undefined,
       queries: searchQueries,
       intent: 'knowledge_qa',
       results: rawResults.map((result, idx) => ({
