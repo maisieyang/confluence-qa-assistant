@@ -9,12 +9,13 @@ import { PROVIDER_OPTIONS, type ProviderName, normalizeProviderName } from '@/li
 
 const QA_EMPTY_STATE = {
   icon: '📚',
-  headline: 'Bank Knowledge Assistant',
-  description: 'Your intelligent assistant for internal banking knowledge based on Confluence.',
+  headline: 'Confluence Knowledge Assistant',
+  description: 'Your intelligent assistant for internal documentation. Ask questions in English or Chinese.',
   suggestions: [
-    '💡 “How do I request new access in the Core Banking System?”',
-    '💡 “Where are the IT onboarding guides for new employees?”',
-    '💡 “How can I check the change management policy for system deployments?”',
+    '💡 “What permissions do new hires need to apply for?”',
+    '💡 “How do I deploy a service to production?”',
+    '💡 “新人入职需要做哪些准备？”',
+    '💡 “Kafka consumer group rebalance 怎么处理？”',
   ],
 };
 
@@ -64,9 +65,9 @@ export default function QAPage() {
     <div className="h-screen bg-bg-primary transition-colors duration-200">
       <ChatWindow
         apiUrl="/api/qa"
-        placeholder="Ask anything"
+        placeholder="Ask a question about company docs..."
         className="h-full"
-        title="Bank Knowledge Assistant"
+        title="Confluence Knowledge Assistant"
         emptyState={QA_EMPTY_STATE}
         renderMessage={renderMessage}
         requestMetadata={requestMetadata}

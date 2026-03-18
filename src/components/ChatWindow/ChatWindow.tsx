@@ -151,10 +151,28 @@ export function ChatWindow({
                   </p>
                 )}
                 {computedEmptyState.suggestions?.length ? (
-                  <div className="space-y-2 text-base text-text-tertiary">
-                    {computedEmptyState.suggestions.map((suggestion, idx) => (
-                      <p key={idx}>{suggestion}</p>
-                    ))}
+                  <div className="space-y-3 text-base max-w-lg mx-auto">
+                    {computedEmptyState.suggestions.map((suggestion, idx) => {
+                      // Extract the question text between quotes for sending
+                      const match = suggestion.match(/"([^"]+)"/);
+                      const questionText = match ? match[1] : suggestion.replace(/^💡\s*/, '');
+
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          disabled={isLoading}
+                          onClick={() => {
+                            if (!isLoading) {
+                              void sendMessage(questionText, requestMetadata);
+                            }
+                          }}
+                          className="w-full text-left px-4 py-3 rounded-xl border border-border-default bg-bg-secondary text-text-secondary hover:bg-bg-tertiary hover:text-text-primary hover:border-accent transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {suggestion}
+                        </button>
+                      );
+                    })}
                   </div>
                 ) : null}
               </div>

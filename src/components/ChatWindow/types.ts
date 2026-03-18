@@ -27,6 +27,8 @@ export interface EmptyStateConfig {
   headline: string;
   description?: string;
   suggestions?: string[];
+  /** When true, clicking a suggestion sends it as a message. Default: true */
+  suggestionsClickable?: boolean;
 }
 
 // ChatWindow 组件的 Props 接口
