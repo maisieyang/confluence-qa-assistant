@@ -156,7 +156,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                     startTime: Date.now()
                   }));
 
-                  if (metadata.references) {
+                  if (metadata.references || metadata.queryTransform) {
                     setMessages(prev => {
                       const context = streamingMessageRef.current;
                       if (!context || context.requestId !== requestId) {
@@ -172,10 +172,11 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                       const updatedMessages = [...prev];
                       updatedMessages[index] = {
                         ...target,
-                        references: metadata.references,
+                        references: metadata.references ?? target.references,
                         metadata: {
                           ...(target.metadata ?? {}),
-                          references: metadata.references,
+                          ...(metadata.references ? { references: metadata.references } : {}),
+                          ...(metadata.queryTransform ? { queryTransform: metadata.queryTransform } : {}),
                         },
                       };
                       return updatedMessages;

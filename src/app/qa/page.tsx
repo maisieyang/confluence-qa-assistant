@@ -27,8 +27,29 @@ export default function QAPage() {
   const requestMetadata = useMemo(() => ({ provider }), [provider]);
 
   const renderMessage = useCallback(({ message, isStreaming, onFeedback }: RenderMessageParams) => {
+    const queryTransform = message.metadata?.queryTransform as
+      | { intent?: string; queries?: string[] }
+      | undefined;
+
+    const showQueryInfo =
+      message.role === 'assistant' &&
+      queryTransform?.intent === 'knowledge_qa' &&
+      queryTransform?.queries?.length;
+
     return (
       <div className="space-y-3">
+        {showQueryInfo ? (
+          <div className="ml-10 flex items-center gap-2 text-xs text-text-tertiary">
+            <span className="shrink-0">🔍</span>
+            <span>
+              Searched: {queryTransform!.queries!.map((q, i) => (
+                <span key={i} className="inline-block px-1.5 py-0.5 mx-0.5 rounded bg-bg-tertiary text-text-secondary">
+                  {q}
+                </span>
+              ))}
+            </span>
+          </div>
+        ) : null}
         <MessageBubble
           message={message}
           onFeedback={onFeedback}
@@ -44,7 +65,7 @@ export default function QAPage() {
   const toolbarActions = (
     <div className="flex items-center space-x-2">
       <label htmlFor="qa-provider" className="text-sm text-text-tertiary">
-        模型
+        Model
       </label>
       <select
         id="qa-provider"
