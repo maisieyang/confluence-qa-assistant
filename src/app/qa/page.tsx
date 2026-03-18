@@ -9,8 +9,8 @@ import { PROVIDER_OPTIONS, type ProviderName, normalizeProviderName } from '@/li
 
 const QA_EMPTY_STATE = {
   icon: '📚',
-  headline: 'Confluence Knowledge Assistant',
-  description: 'Your intelligent assistant for internal documentation. Ask questions in English or Chinese.',
+  headline: 'Knowledge Assistant',
+  description: 'Your intelligent assistant for company internal documentation.',
   suggestions: [
     '💬 “Hi, what can you help me with?”',
     '🔍 “What permissions do new hires need to apply for?”',
@@ -90,7 +90,7 @@ export default function QAPage() {
         apiUrl="/api/qa"
         placeholder="Ask a question about company docs..."
         className="h-full"
-        title="Confluence Knowledge Assistant"
+        title="Knowledge Assistant"
         emptyState={QA_EMPTY_STATE}
         renderMessage={renderMessage}
         requestMetadata={requestMetadata}
