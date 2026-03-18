@@ -27,8 +27,9 @@ export interface EvalResult {
   latencyMs: number;
 }
 
-const EVAL_SYSTEM_PROMPT = `You are a strict evaluator for a RAG (Retrieval-Augmented Generation) system.
-You will be given a question, retrieved context, and the system's answer.
+const EVAL_SYSTEM_PROMPT = `You are an evaluator for a RAG (Retrieval-Augmented Generation) system.
+You will be given a question, the retrieved context chunks (the actual document content the system had access to), and the system's answer.
+
 Score each dimension from 0.0 to 1.0 with one decimal place.
 
 Return ONLY valid JSON, no markdown fences, no explanation outside the JSON:
@@ -41,11 +42,16 @@ Return ONLY valid JSON, no markdown fences, no explanation outside the JSON:
 ## Scoring Criteria
 
 ### Faithfulness (0.0 - 1.0)
-Is every claim in the answer supported by the retrieved context?
-- 1.0: Every factual statement is traceable to the context. No fabrication.
-- 0.7: Mostly faithful, but includes minor unsupported elaboration.
-- 0.3: Contains significant claims not found in context.
+Can each factual claim in the answer be verified from the retrieved context?
+
+IMPORTANT: Faithfulness is about factual accuracy, NOT about exact wording. Paraphrasing, summarizing, and reorganizing information from the context is perfectly fine and should score HIGH. Only penalize when the answer contains specific facts (numbers, names, steps, dates) that CANNOT be found anywhere in the context.
+
+- 1.0: All facts in the answer can be found in or reasonably inferred from the context. Paraphrasing is fine.
+- 0.7: Most facts are supported, with minor additions that are reasonable inferences.
+- 0.3: Contains significant specific claims (numbers, names, steps) not found in context.
 - 0.0: Answer is entirely fabricated or contradicts the context.
+
+Example: If context says "Minimum 12 characters" and answer says "at least 12 characters long", this is faithful (score 1.0), not fabrication.
 
 ### Relevancy (0.0 - 1.0)
 Does the answer actually address the user's question?
@@ -53,15 +59,14 @@ Does the answer actually address the user's question?
 - 0.7: Partially answers, missing some aspects.
 - 0.3: Tangentially related but doesn't really answer.
 - 0.0: Completely off-topic.
-- Special: If the system correctly says "I could not find relevant information" for a question that IS outside the knowledge base, score 1.0 (this is the correct behavior).
+- Special: If the system correctly says "I could not find relevant information" for a question outside the knowledge base, score 1.0.
 
 ### Context Precision (0.0 - 1.0)
-Are the retrieved context chunks actually relevant to the question?
-- 1.0: All retrieved chunks are highly relevant.
-- 0.7: Most chunks are relevant, some noise.
-- 0.3: Only a few chunks are relevant, most are noise.
-- 0.0: None of the retrieved chunks are relevant.
-- If no context was retrieved (general intent), score N/A as 1.0.`;
+Is the TOP-RANKED retrieved chunk actually relevant to answering the question?
+- 1.0: The first chunk directly contains information needed to answer the question.
+- 0.7: The first chunk is relevant but not the best possible match.
+- 0.3: The first chunk is only tangentially related.
+- 0.0: The first chunk is completely irrelevant to the question.`;
 
 function buildEvalUserPrompt(
   question: string,

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { getPineconeStore } from '../src/lib/vectorstore';
 import { QAEngine } from '../src/lib/pipeline/qa';
 import { evaluateAnswer, type EvalResult } from '../src/lib/pipeline/evaluate';
+import { getBM25Searcher } from '../src/lib/search';
 
 const globalWithFile = globalThis as unknown as { File?: typeof NodeFile };
 if (typeof globalWithFile.File === 'undefined') {
@@ -76,11 +77,34 @@ async function runEvaluation() {
 
       const topScore = response.retrievalTrace?.results?.[0]?.score ?? null;
 
-      // Build context string from retrieval trace for evaluation
-      const contextForEval = response.retrievalTrace?.results
-        ?.filter(r => r.included)
-        ?.map(r => `[${r.index}] ${r.title} — ${r.heading ?? ''} (score: ${r.score})`)
-        ?.join('\n') ?? '';
+      // Build context string with actual chunk content for evaluation
+      // Use BM25 index as a fast content lookup (it stores full chunk content)
+      const bm25 = await getBM25Searcher();
+      const includedIds = new Set(
+        response.retrievalTrace?.results?.filter(r => r.included).map(r => r.id) ?? []
+      );
+      let contextForEval = '';
+      if (bm25 && includedIds.size > 0) {
+        // Search with the rewritten queries to get chunks with content
+        const queries = response.queryTransform?.queries ?? [tc.question];
+        const searchResults = queries.flatMap(q => bm25.search(q, 20));
+        const seen = new Set<string>();
+        const relevantChunks = searchResults.filter(r => {
+          if (seen.has(r.chunk.id) || !includedIds.has(r.chunk.id)) return false;
+          seen.add(r.chunk.id);
+          return true;
+        });
+        contextForEval = relevantChunks
+          .map(r => `[Chunk] ${r.chunk.title} > ${r.chunk.heading ?? ''}\n${r.chunk.content}`)
+          .join('\n\n---\n\n');
+      }
+      // Fallback: use title/heading only if no content available
+      if (!contextForEval) {
+        contextForEval = response.retrievalTrace?.results
+          ?.filter(r => r.included)
+          ?.map(r => `[${r.index}] ${r.title} — ${r.heading ?? ''} (score: ${r.score})`)
+          ?.join('\n') ?? '';
+      }
 
       console.log(`  intent=${intent} scenario=${scenario} refs=${response.references.length} topScore=${topScore} latency=${latency}ms`);
       console.log(`  queries: ${JSON.stringify(rewrittenQueries)}`);
