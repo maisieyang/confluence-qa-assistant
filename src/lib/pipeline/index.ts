@@ -5,3 +5,4 @@ export * from './queryTransform';
 export * from './qaObservation';
 export * from './evaluate';
 export * from './reranker';
+export * from './contextManager';

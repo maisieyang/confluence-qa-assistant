@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { QAEngine } from '@/lib/pipeline';
 import { getPineconeStore } from '@/lib/vectorstore';
 import { resolveProvider } from '@/lib/providers/modelProvider';
+import { buildManagedChatHistory } from '@/lib/pipeline/contextManager';
 import type { ChatMessage } from '@/components/ChatWindow/types';
 
 export const runtime = 'nodejs';
@@ -55,10 +56,6 @@ const logPerformanceMetrics = (metrics: PerformanceMetrics, error?: Error) => {
   }));
 };
 
-const formatChatHistory = (messages: ChatMessage[]) =>
-  messages
-    .map((message) => `${message.role}: ${message.content}`)
-    .join('\n');
 
 export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
@@ -75,7 +72,7 @@ export async function POST(req: NextRequest) {
     }
 
     const latestMessage = messages[messages.length - 1];
-    const chatHistory = formatChatHistory(messages.slice(0, -1));
+    const chatHistory = await buildManagedChatHistory(messages.slice(0, -1));
 
     const store = await getPineconeStore();
     const qa = new QAEngine(store, undefined, provider);
