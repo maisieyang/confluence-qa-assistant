@@ -2,6 +2,7 @@
 
 基于 RAG（Retrieval-Augmented Generation）的智能文档问答系统。支持 Confluence 页面和本地 Markdown 文档，通过向量检索 + BM25 混合搜索 + 重排序，提供高精度的流式问答体验。
 
+
 ## Architecture
 
 ```
@@ -107,7 +108,7 @@ pnpm ingest-local
 pnpm dev
 ```
 
-Open [http://localhost:3000/qa](http://localhost:3000/qa) for the chat interface.
+Open [http://localhost:3000](http://localhost:3000) for the chat interface.
 
 ## Scripts
 
@@ -125,33 +126,83 @@ Open [http://localhost:3000/qa](http://localhost:3000/qa) for the chat interface
 
 ```
 src/
-├── lib/
-│   ├── confluence/          # Fetching, cleaning, chunking Confluence content
-│   │   └── chunk.ts         # chunkPage() + chunkPageParentChild() (parent-child splitting)
-│   ├── vectorstore/
-│   │   ├── pineconeStore.ts # Pinecone CRUD + vector search
-│   │   └── parentStore.ts   # Parent chunk store (JSON persistence + lazy singleton)
-│   ├── search/
-│   │   ├── bm25.ts          # BM25 index with field boosting (title/heading/content)
-│   │   ├── tokenizer.ts     # Chinese + English tokenizer with stopwords
-│   │   └── fusion.ts        # RRF (Reciprocal Rank Fusion)
-│   ├── pipeline/
-│   │   ├── qa.ts            # QAEngine: hybrid retrieval + expandToParents() + generation
-│   │   ├── build.ts         # Confluence ingestion pipeline (incremental)
-│   │   ├── queryTransform.ts # Intent detection + query rewriting
-│   │   ├── reranker.ts      # Jina cross-encoder reranking
-│   │   └── evaluate.ts      # LLM-as-judge evaluation (faithfulness, relevancy, contextPrecision)
-│   ├── providers/
-│   │   └── modelProvider.ts # Multi-provider support (OpenAI, Qwen)
-│   └── prompts/             # System/user prompt templates
-├── components/              # React UI (ChatWindow, Markdown, references)
-└── app/                     # Next.js routes (/qa, /api/qa)
+├── app/                          # Next.js 页面 + API Routes
+│   ├── page.tsx                  # 首页（Knowledge Assistant）
+│   ├── layout.tsx                # 布局
+│   └── api/
+│       └── qa/route.ts           # QA API endpoint
+│
+├── components/                   # React 组件（16个）
+│   ├── ChatWindow/               # 核心聊天窗口组件
+│   │   ├── ChatWindow.tsx
+│   │   └── types.ts
+│   ├── MessageBubble.tsx         # 消息气泡
+│   ├── MarkdownRenderer.tsx      # Markdown 渲染
+│   ├── EnhancedMarkdownRenderer.tsx
+│   ├── QAReferenceList.tsx       # 引用列表
+│   ├── SendButton.tsx            # 发送按钮
+│   ├── ThemeSelector.tsx         # 主题选择
+│   ├── ErrorBoundary.tsx         # 错误边界
+│   ├── ErrorMessage.tsx          # 错误提示
+│   ├── CodeCopyButton.tsx        # 代码复制
+│   ├── MessageFeedback.tsx       # 消息反馈
+│   ├── CollapsibleSection.tsx    # 可折叠区域
+│   ├── ScrollToBottomButton.tsx  # 滚动到底部
+│   ├── CalloutBox.tsx            # 提示框
+│   ├── VisualSeparator.tsx       # 视觉分隔
+│   └── MarkdownComponents.tsx    # Markdown 子组件
+│
+├── hooks/                        # 自定义 Hooks（4个）
+│   ├── useChat.ts                # 聊天逻辑（核心）
+│   ├── useTheme.ts               # 主题管理
+│   ├── useDarkMode.ts            # 暗色模式
+│   └── useAutoScroll.ts          # 自动滚动
+│
+├── lib/                          # 后端逻辑
+│   ├── confluence/               # Confluence 数据源
+│   │   ├── client.ts             # API 客户端
+│   │   ├── chunk.ts              # 分块逻辑（核心）
+│   │   ├── clean.ts              # 数据清洗
+│   │   └── types.ts              # 类型定义
+│   ├── pipeline/                 # RAG Pipeline（核心）
+│   │   ├── qa.ts                 # 问答主流程
+│   │   ├── queryTransform.ts     # 查询改写 + 意图分类
+│   │   ├── contextManager.ts     # 上下文管理
+│   │   ├── reranker.ts           # 重排序
+│   │   ├── qaObservation.ts      # 可观测性日志
+│   │   ├── loader.ts             # 文档加载
+│   │   ├── evaluate.ts           # 评测
+│   │   ├── build.ts              # 索引构建
+│   │   ├── vectorCache.ts        # 向量缓存
+│   │   └── vectorLog.ts          # 日志
+│   ├── search/                   # 检索
+│   │   ├── bm25.ts               # BM25 关键词检索
+│   │   ├── fusion.ts             # RRF 混合检索
+│   │   └── tokenizer.ts          # 分词器
+│   ├── vectorstore/              # 向量存储
+│   │   ├── pineconeStore.ts      # Pinecone 操作
+│   │   └── parentStore.ts        # Parent-Child 存储
+│   ├── embeddings/               # Embedding
+│   │   └── index.ts
+│   ├── providers/                # 模型 Provider
+│   │   ├── modelProvider.ts      # 多 Provider 抽象层
+│   │   └── types.ts
+│   └── prompts/                  # Prompt 模板
+│       ├── systemPrompts.ts
+│       └── unifiedPrompt.ts
+│
+├── utils/                        # 工具函数
+│   ├── markdownPreprocessor.ts   # Markdown 预处理
+│   └── astMarkdownProcessor.ts   # AST Markdown 处理
+│
+└── styles/                       # 样式文件
 
-scripts/
-├── ingest-local-docs.ts     # Local markdown → parent-child chunks → Pinecone + BM25 + Parent Store
-├── evaluate.ts              # Run eval suite against test cases
-├── vectorize.ts             # Confluence → Pinecone ingestion
-└── verify-pinecone.ts       # Pinecone index inspection
+scripts/                          # 独立脚本
+├── vectorize.ts                  # 向量化
+├── evaluate.ts                   # 评测运行
+├── ingest-local-docs.ts          # 本地文档导入
+├── clearEmbeddings.ts            # 清理 Embedding
+└── verify-pinecone.ts            # Pinecone 验证
 
 data/
 ├── test-docs/               # 29 markdown test documents (short + long)
@@ -180,7 +231,6 @@ Report saved to `logs/eval-report.json`.
 
 ## Key Design Decisions
 
-- **CJK-aware token estimation**: `estimateTokens()` accounts for Chinese characters (each ~0.6 tokens) to produce correct chunk sizes for mixed-language documents
-- **Cross-section merging**: Adjacent small sections (headings, code blocks, tables) are greedily merged into 300-800 token parents, preventing fragmented chunks
+- **Cross-section merging**: Adjacent small sections (headings, code blocks, tables) are merged into 300-800 token parents, preventing fragmented chunks
 - **Graceful degradation**: If parent store is unavailable, `expandToParents()` passes through child results unchanged
 - **Incremental ingestion**: Both BM25 index and parent store support page-level incremental updates, avoiding full rebuilds
