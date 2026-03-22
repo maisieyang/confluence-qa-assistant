@@ -11,7 +11,9 @@
     "verify-pinecone": "tsx scripts/verify-pinecone.ts",
     "clear:embeddings": "tsx scripts/clearEmbeddings.ts",
     "evaluate": "tsx scripts/evaluate.ts",
-    "ingest-local": "tsx scripts/ingest-local-docs.ts"
+    "ingest-local": "tsx scripts/ingest-local-docs.ts",
+    "test": "jest",
+    "test:watch": "jest --watch"
   },
   "dependencies": {
     "@pinecone-database/pinecone": "^1.1.0",
@@ -39,6 +41,10 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
@@ -46,7 +52,10 @@
     "@types/turndown": "^5.0.5",
     "eslint": "^9",
     "eslint-config-next": "15.5.3",
+    "jest": "^30.3.0",
+    "jest-environment-jsdom": "^30.3.0",
     "tailwindcss": "^4",
+    "ts-jest": "^29.4.6",
     "tsx": "^4.19.0",
     "typescript": "5.9.3"
   }
