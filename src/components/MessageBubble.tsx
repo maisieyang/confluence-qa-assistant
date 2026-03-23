@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ChatMessage } from '../components/ChatWindow/types';
+import { ChatMessage } from './ChatWindow/types';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { MessageFeedback } from './MessageFeedback';
 

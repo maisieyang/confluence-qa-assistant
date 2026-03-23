@@ -1,4 +1,4 @@
-# Document QA Assistant
+# Confluence QA Assistant
 
 基于 RAG（Retrieval-Augmented Generation）的智能文档问答系统。支持 Confluence 页面和本地 Markdown 文档，通过向量检索 + BM25 混合搜索 + 重排序，提供高精度的流式问答体验。
 
