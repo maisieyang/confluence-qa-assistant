@@ -4,20 +4,17 @@ import { useCallback, useMemo, useState } from 'react';
 import { ChatWindow } from '@/components/ChatWindow';
 import { MessageBubble } from '@/components/MessageBubble';
 import { QAReferenceList } from '@/components/QAReferenceList';
+import { SettingsPopover } from '@/components/SettingsPopover';
 import type { RenderMessageParams } from '@/components/ChatWindow/types';
-import { PROVIDER_OPTIONS, type ProviderName, normalizeProviderName } from '@/lib/providers/types';
+import { type ProviderName, normalizeProviderName } from '@/lib/providers/types';
 
 const QA_EMPTY_STATE = {
-  icon: '📚',
-  headline: 'Knowledge Assistant',
-  description: 'Your intelligent assistant for company internal documentation.',
+  headline: 'What can I help with?',
   suggestions: [
-    '💬 "Hi, what can you help me with?"',
-    '🔍 "What permissions do new hires need to apply for?"',
-    '🔍 "Compare Project Alpha and Project Beta\'s tech stack"',
-    '🔍 "公司的年假政策是什么？"',
-    '🔍 "Kafka consumer group rebalance 怎么处理？"',
-    '🚫 "帮我写一首诗"',
+    'What permissions do new hires need to apply for?',
+    "Compare Project Alpha and Project Beta's tech stack",
+    '公司的年假政策是什么？',
+    'Kafka consumer group rebalance 怎么处理？',
   ],
 };
 
@@ -39,9 +36,9 @@ export default function Home() {
       queryTransform?.queries?.length;
 
     return (
-      <div className="space-y-3">
+      <div>
         {showQueryInfo ? (
-          <div className="ml-10 flex items-center gap-2 text-xs text-text-tertiary">
+          <div className="flex items-center gap-2 text-xs text-text-tertiary mb-2">
             <span className="shrink-0">🔍</span>
             <span>
               Searched: {queryTransform!.queries!.map((q, i) => (
@@ -64,37 +61,21 @@ export default function Home() {
     );
   }, []);
 
-  const toolbarActions = (
-    <div className="flex items-center space-x-2">
-      <label htmlFor="qa-provider" className="text-sm text-text-tertiary">
-        Model
-      </label>
-      <select
-        id="qa-provider"
-        value={provider}
-        onChange={(event) => setProvider(event.target.value as ProviderName)}
-        className="rounded-md border border-border-subtle bg-bg-secondary px-2 py-1 text-sm text-text-primary focus:border-accent focus:outline-none"
-      >
-        {PROVIDER_OPTIONS.map((option) => (
-          <option key={option} value={option}>
-            {option === 'openai' ? 'OpenAI' : 'Qwen (通义千问)'}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-
   return (
-    <div className="h-screen bg-bg-primary transition-colors duration-200">
+    <div className="h-screen bg-bg-primary transition-colors duration-200 relative">
       <ChatWindow
         apiUrl="/api/qa"
         placeholder="Ask a question about company docs..."
         className="h-full"
-        title="Knowledge Assistant"
         emptyState={QA_EMPTY_STATE}
         renderMessage={renderMessage}
         requestMetadata={requestMetadata}
-        toolbarActions={toolbarActions}
+        headerActions={
+          <SettingsPopover
+            provider={provider}
+            onProviderChange={setProvider}
+          />
+        }
       />
     </div>
   );

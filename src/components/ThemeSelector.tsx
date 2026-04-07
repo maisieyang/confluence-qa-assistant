@@ -3,43 +3,42 @@
 import { useMemo } from 'react';
 import { useTheme } from '@/hooks/useTheme';
 
-type ThemeOption = {
-  value: 'light' | 'dark' | 'system';
-  label: string;
-  icon: string;
-};
+type ThemeValue = 'light' | 'dark' | 'system';
 
-const THEME_OPTIONS: ThemeOption[] = [
-  { value: 'light', label: 'Light', icon: '🌞' },
+const THEME_OPTIONS: { value: ThemeValue; label: string; icon: string }[] = [
+  { value: 'light', label: 'Light', icon: '☀️' },
   { value: 'dark', label: 'Dark', icon: '🌙' },
-  { value: 'system', label: 'System', icon: '🖥' },
+  { value: 'system', label: 'Auto', icon: '💻' },
 ];
 
 export function ThemeSelector() {
   const { theme, setTheme, mounted } = useTheme();
 
   const currentTheme = useMemo(() => {
-    if (!mounted) {
-      return 'system';
-    }
+    if (!mounted) return 'system';
     return theme;
   }, [mounted, theme]);
 
   return (
-    <label className="flex items-center space-x-2 text-sm text-text-tertiary">
-      <span>主题</span>
-      <select
-        value={currentTheme}
-        onChange={(event) => setTheme(event.target.value as ThemeOption['value'])}
-        disabled={!mounted}
-        className="rounded-md border border-border-subtle bg-bg-secondary px-2 py-1 text-sm text-text-primary focus:border-accent focus:outline-none disabled:opacity-60"
-      >
+    <div>
+      <div className="text-sm font-medium text-text-secondary mb-2">Theme</div>
+      <div className="flex rounded-lg border border-border-default overflow-hidden">
         {THEME_OPTIONS.map((option) => (
-          <option key={option.value} value={option.value}>
-            {`${option.icon} ${option.label}`}
-          </option>
+          <button
+            key={option.value}
+            type="button"
+            disabled={!mounted}
+            onClick={() => setTheme(option.value)}
+            className={`flex-1 px-2 py-1.5 text-sm transition-colors duration-150 cursor-pointer disabled:opacity-60 ${
+              currentTheme === option.value
+                ? 'bg-interactive-primary text-text-inverted font-medium'
+                : 'bg-bg-tertiary text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            <span className="mr-0.5">{option.icon}</span> {option.label}
+          </button>
         ))}
-      </select>
-    </label>
+      </div>
+    </div>
   );
 }

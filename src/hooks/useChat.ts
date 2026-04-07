@@ -62,6 +62,7 @@ interface UseChatReturn {
   input: string;
   setInput: (input: string) => void;
   sendMessage: (content: string, payload?: Record<string, unknown>) => Promise<void>;
+  stopGeneration: () => void;
   isLoading: boolean;
   error: string | null;
   connectionStatus: ConnectionStatus;
@@ -90,6 +91,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   optionsRef.current = options;
   const streamingMessageRef = useRef<{ index: number; requestId: string } | null>(null);
   const lastPayloadRef = useRef<Record<string, unknown> | undefined>(undefined);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // 清除消息
   const clearMessages = useCallback(() => {
@@ -276,11 +278,14 @@ export function useChat(options: UseChatOptions): UseChatReturn {
 
     try {
       // 2. 发送API请求
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
       const response = await fetch(optionsRef.current.apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        signal: controller.signal,
         body: JSON.stringify({
           messages: newMessages,
           ...(payload ?? {}),
@@ -352,14 +357,22 @@ export function useChat(options: UseChatOptions): UseChatReturn {
       }
       
     } catch (error) {
-      console.error('Chat Error:', error);
       const errorObj = error as Error;
+
+      // AbortError：用户主动停止，保留已输出内容，不报错
+      if (errorObj.name === 'AbortError') {
+        streamingMessageRef.current = null;
+        updateConnectionStatus(ConnectionStatus.DISCONNECTED);
+        return;
+      }
+
+      console.error('Chat Error:', error);
       setError(errorObj.message);
       updateConnectionStatus(ConnectionStatus.ERROR);
-      
+
       // 调用错误回调
       optionsRef.current.onError?.(errorObj);
-      
+
       // 添加错误消息
       const errorMessage: ChatMessage = {
         role: 'assistant',
@@ -368,6 +381,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
       };
       setMessages(prev => [...prev, errorMessage]);
     } finally {
+      abortControllerRef.current = null;
       setIsLoading(false);
     }
   }, [isLoading, handleStreamingResponse, updateConnectionStatus]);
@@ -377,6 +391,17 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     lastPayloadRef.current = payload;
     await sendMessageCore(content, messages, payload);
   }, [sendMessageCore, messages]);
+
+  // 停止生成
+  const stopGeneration = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    streamingMessageRef.current = null;
+    setIsLoading(false);
+    updateConnectionStatus(ConnectionStatus.DISCONNECTED);
+  }, [updateConnectionStatus]);
 
   // 重试机制
   const retry = useCallback(async () => {
@@ -400,6 +425,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     input,
     setInput,
     sendMessage,
+    stopGeneration,
     isLoading,
     error,
     connectionStatus,

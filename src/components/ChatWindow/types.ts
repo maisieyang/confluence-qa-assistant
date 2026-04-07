@@ -40,5 +40,5 @@ export interface ChatWindowProps {
   emptyState?: EmptyStateConfig;
   renderMessage?: (params: RenderMessageParams) => React.ReactNode;
   requestMetadata?: Record<string, unknown>;
-  toolbarActions?: ReactNode;
+  headerActions?: ReactNode;
 }

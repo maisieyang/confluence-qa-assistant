@@ -111,7 +111,6 @@ function createInlineReferenceParagraph(listNode: List): Paragraph | null {
 function bankingMarkdownFormatting() {
   return (tree: Root) => {
     const nodes = tree.children;
-    let hasSectionHeading = false;
 
     for (let i = 0; i < nodes.length; i += 1) {
       const node = nodes[i];
@@ -119,10 +118,6 @@ function bankingMarkdownFormatting() {
       if (node.type === 'heading') {
         const heading = node as Heading;
         const text = extractHeadingText(heading);
-
-        if ((heading.depth ?? 2) <= 3) {
-          hasSectionHeading = true;
-        }
 
         if (text === 'references') {
           nodes.splice(i, 1);
@@ -143,19 +138,7 @@ function bankingMarkdownFormatting() {
       }
     }
 
-    if (!hasSectionHeading) {
-      const heading: Heading = {
-        type: 'heading',
-        depth: 2,
-        children: [
-          {
-            type: 'text',
-            value: 'Answer',
-          },
-        ],
-      };
-      nodes.unshift(heading);
-    }
+    // No longer inject an "Answer" heading for short/casual responses
   };
 }
 
