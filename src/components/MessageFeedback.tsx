@@ -1,48 +1,93 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 
 interface MessageFeedbackProps {
   messageId: string;
+  content: string;
   onFeedback?: (messageId: string, feedback: 'like' | 'dislike') => void;
-  className?: string;
 }
 
-export function MessageFeedback({ messageId, onFeedback, className = '' }: MessageFeedbackProps) {
+export function MessageFeedback({ messageId, content, onFeedback }: MessageFeedbackProps) {
   const [feedback, setFeedback] = useState<'like' | 'dislike' | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // fallback
+      const textarea = document.createElement('textarea');
+      textarea.value = content;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }, [content]);
 
   const handleFeedback = (type: 'like' | 'dislike') => {
-    setFeedback(type);
-    onFeedback?.(messageId, type);
+    const newValue = feedback === type ? null : type;
+    setFeedback(newValue);
+    if (newValue) {
+      onFeedback?.(messageId, newValue);
+    }
   };
 
   return (
-    <div className={`flex items-center space-x-2 ${className}`}>
+    <div className="flex items-center gap-0.5">
+      {/* Copy */}
       <button
-        onClick={() => handleFeedback('like')}
-        className={`p-2 rounded-md transition-colors duration-200 bg-bg-tertiary shadow-sm ${
-          feedback === 'like'
-            ? 'text-success bg-green-50 dark:bg-green-900/20'
-            : 'text-text-tertiary hover:text-success hover:bg-green-50 dark:hover:bg-green-900/20'
-        }`}
-        title="有用"
+        type="button"
+        onClick={handleCopy}
+        className="p-1.5 rounded-md text-text-tertiary hover:text-text-primary hover:bg-bg-tertiary transition-colors duration-150"
+        title="Copy"
       >
-        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-          <path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.834a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" />
+        {copied ? (
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        ) : (
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
+        )}
+      </button>
+
+      {/* Thumbs up */}
+      <button
+        type="button"
+        onClick={() => handleFeedback('like')}
+        className={`p-1.5 rounded-md transition-colors duration-150 ${
+          feedback === 'like'
+            ? 'text-text-primary bg-bg-tertiary'
+            : 'text-text-tertiary hover:text-text-primary hover:bg-bg-tertiary'
+        }`}
+        title="Good response"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M7 11v10M3 14v4a3 3 0 0 0 3 3h8.16a3 3 0 0 0 2.95-2.46l1.26-7A3 3 0 0 0 15.41 8H12V4a2 2 0 0 0-2-2h-.09a1 1 0 0 0-.93.65L7 11z" />
         </svg>
       </button>
-      
+
+      {/* Thumbs down */}
       <button
+        type="button"
         onClick={() => handleFeedback('dislike')}
-        className={`p-2 rounded-md transition-colors duration-200 bg-bg-tertiary shadow-sm ${
+        className={`p-1.5 rounded-md transition-colors duration-150 ${
           feedback === 'dislike'
-            ? 'text-error bg-red-50 dark:bg-red-900/20'
-            : 'text-text-tertiary hover:text-error hover:bg-red-50 dark:hover:bg-red-900/20'
+            ? 'text-text-primary bg-bg-tertiary'
+            : 'text-text-tertiary hover:text-text-primary hover:bg-bg-tertiary'
         }`}
-        title="无用"
+        title="Bad response"
       >
-        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-          <path d="M18 9.5a1.5 1.5 0 11-3 0v-6a1.5 1.5 0 013 0v6zM14 9.667v-5.834a2 2 0 00-1.106-1.79l-.05-.025A4 4 0 0011.057 2H5.64a2 2 0 00-1.962 1.608l-1.2 6A2 2 0 004.44 12H8v4a2 2 0 002 2 1 1 0 001-1v-.667a4 4 0 01.8-2.4l1.4-1.866a4 4 0 00.8-2.4z" />
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M17 13V3M21 10V6a3 3 0 0 0-3-3H9.84a3 3 0 0 0-2.95 2.46l-1.26 7A3 3 0 0 0 8.59 16H12v4a2 2 0 0 0 2 2h.09a1 1 0 0 0 .93-.65L17 13z" />
         </svg>
       </button>
     </div>

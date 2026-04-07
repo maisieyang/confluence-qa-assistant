@@ -12,9 +12,9 @@ export function QAReferenceList({ references }: QAReferenceListProps) {
   }
 
   return (
-    <div className="rounded-xl border border-border-light bg-bg-tertiary px-4 py-3 shadow-sm">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">来源 References</h3>
-      <ul className="mt-2 space-y-1 text-sm text-text-secondary">
+    <div className="pt-2 pb-4">
+      <h3 className="text-xs font-medium text-text-tertiary mb-1.5">References</h3>
+      <ul className="space-y-0.5 text-sm text-text-secondary">
         {references.map((reference) => (
           <li key={reference.index} className="flex items-start gap-2">
             <span className="font-medium text-text-primary">[{reference.index}]</span>

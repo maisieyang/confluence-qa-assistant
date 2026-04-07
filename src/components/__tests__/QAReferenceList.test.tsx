@@ -51,7 +51,7 @@ describe('QAReferenceList', () => {
     ];
     render(<QAReferenceList references={references} />);
 
-    expect(screen.getByText('来源 References')).toBeInTheDocument();
+    expect(screen.getByText('References')).toBeInTheDocument();
   });
 
   it('renders mixed URL and non-URL references', () => {

@@ -21,50 +21,53 @@ describe('ThemeSelector', () => {
     });
   });
 
-  it('renders a select element', () => {
+  it('renders three theme buttons', () => {
     render(<ThemeSelector />);
-    expect(screen.getByRole('combobox')).toBeInTheDocument();
+    const buttons = screen.getAllByRole('button');
+    expect(buttons).toHaveLength(3);
   });
 
-  it('renders a label with the text 主题', () => {
+  it('renders Light, Dark and Auto options', () => {
     render(<ThemeSelector />);
-    expect(screen.getByText('主题')).toBeInTheDocument();
+    expect(screen.getByText(/Light/)).toBeInTheDocument();
+    expect(screen.getByText(/Dark/)).toBeInTheDocument();
+    expect(screen.getByText(/Auto/)).toBeInTheDocument();
   });
 
-  it('renders all three theme options', () => {
+  it('renders the Theme label', () => {
     render(<ThemeSelector />);
-    expect(screen.getByRole('option', { name: /Light/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /Dark/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /System/i })).toBeInTheDocument();
+    expect(screen.getByText('Theme')).toBeInTheDocument();
   });
 
-  it('shows the current theme as the selected option when mounted', () => {
-    mockUseTheme.mockReturnValue({
-      theme: 'dark',
-      resolvedTheme: 'dark',
-      setTheme: mockSetTheme,
-      mounted: true,
-    });
-
+  it('calls setTheme with dark when Dark button is clicked', async () => {
     render(<ThemeSelector />);
-    const select = screen.getByRole('combobox') as HTMLSelectElement;
-    expect(select.value).toBe('dark');
+    const darkButton = screen.getByText(/Dark/);
+
+    await userEvent.click(darkButton);
+
+    expect(mockSetTheme).toHaveBeenCalledTimes(1);
+    expect(mockSetTheme).toHaveBeenCalledWith('dark');
   });
 
-  it('defaults to system when not yet mounted', () => {
-    mockUseTheme.mockReturnValue({
-      theme: 'dark',
-      resolvedTheme: 'dark',
-      setTheme: mockSetTheme,
-      mounted: false,
-    });
-
+  it('calls setTheme with light when Light button is clicked', async () => {
     render(<ThemeSelector />);
-    const select = screen.getByRole('combobox') as HTMLSelectElement;
-    expect(select.value).toBe('system');
+    const lightButton = screen.getByText(/Light/);
+
+    await userEvent.click(lightButton);
+
+    expect(mockSetTheme).toHaveBeenCalledWith('light');
   });
 
-  it('is disabled when not yet mounted', () => {
+  it('calls setTheme with system when Auto button is clicked', async () => {
+    render(<ThemeSelector />);
+    const autoButton = screen.getByText(/Auto/);
+
+    await userEvent.click(autoButton);
+
+    expect(mockSetTheme).toHaveBeenCalledWith('system');
+  });
+
+  it('disables buttons when not mounted', () => {
     mockUseTheme.mockReturnValue({
       theme: 'system',
       resolvedTheme: 'light',
@@ -73,30 +76,13 @@ describe('ThemeSelector', () => {
     });
 
     render(<ThemeSelector />);
-    expect(screen.getByRole('combobox')).toBeDisabled();
+    const buttons = screen.getAllByRole('button');
+    buttons.forEach(btn => expect(btn).toBeDisabled());
   });
 
-  it('is enabled when mounted', () => {
+  it('enables buttons when mounted', () => {
     render(<ThemeSelector />);
-    expect(screen.getByRole('combobox')).toBeEnabled();
-  });
-
-  it('calls setTheme with the selected value when changed', async () => {
-    render(<ThemeSelector />);
-    const select = screen.getByRole('combobox');
-
-    await userEvent.selectOptions(select, 'dark');
-
-    expect(mockSetTheme).toHaveBeenCalledTimes(1);
-    expect(mockSetTheme).toHaveBeenCalledWith('dark');
-  });
-
-  it('calls setTheme with light when light option is selected', async () => {
-    render(<ThemeSelector />);
-    const select = screen.getByRole('combobox');
-
-    await userEvent.selectOptions(select, 'light');
-
-    expect(mockSetTheme).toHaveBeenCalledWith('light');
+    const buttons = screen.getAllByRole('button');
+    buttons.forEach(btn => expect(btn).toBeEnabled());
   });
 });

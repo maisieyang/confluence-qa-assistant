@@ -23,8 +23,8 @@ export function MessageBubble({ message, className = '', onFeedback, isStreaming
           </div>
         </div>
       ) : (
-        /* Assistant message - left aligned, clean */
-        <div className="py-4">
+        /* Assistant message - left aligned with hover feedback */
+        <div className="group py-4">
           <div className="prose prose-lg max-w-none text-base leading-relaxed">
             <MarkdownRenderer content={message.content} />
             {isStreaming && (
@@ -35,11 +35,12 @@ export function MessageBubble({ message, className = '', onFeedback, isStreaming
             )}
           </div>
 
-          {/* Feedback - appears on hover after streaming */}
+          {/* Action bar: copy + thumbs up + thumbs down — visible on hover */}
           {!isStreaming && message.content && (
-            <div className="flex items-center gap-1 mt-2 opacity-0 hover:opacity-100 transition-opacity duration-200">
+            <div className="mt-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
               <MessageFeedback
                 messageId={message.timestamp?.getTime().toString() || 'unknown'}
+                content={message.content}
                 onFeedback={onFeedback}
               />
             </div>

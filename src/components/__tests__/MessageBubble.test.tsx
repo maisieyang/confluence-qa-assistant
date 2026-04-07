@@ -12,7 +12,7 @@ jest.mock('../MarkdownRenderer', () => ({
 
 // Mock MessageFeedback to avoid testing that separately
 jest.mock('../MessageFeedback', () => ({
-  MessageFeedback: ({ messageId, onFeedback }: { messageId: string; onFeedback?: Function }) => (
+  MessageFeedback: ({ messageId }: { messageId: string; content: string; onFeedback?: Function }) => (
     <div data-testid="message-feedback" data-messageid={messageId} />
   ),
 }));
@@ -96,13 +96,13 @@ describe('MessageBubble', () => {
     expect(container.firstChild).toHaveClass('custom-class');
   });
 
-  it('renders the robot emoji for assistant messages', () => {
+  it('renders assistant message content without labels', () => {
     const message: ChatMessage = {
       role: 'assistant',
       content: 'AI response.',
     };
     render(<MessageBubble message={message} />);
-    expect(screen.getByText('🤖')).toBeInTheDocument();
+    expect(screen.getByTestId('markdown-renderer')).toHaveTextContent('AI response.');
   });
 
   it('calls onFeedback when provided', () => {
